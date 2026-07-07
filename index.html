@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏰</text></svg>">
+<title>Kingdoms of the Cursed</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0a0a10;
+    font-family:'Georgia', 'Times New Roman', serif; color:#e8e0cc; user-select:none; }
+  #game { width:100%; height:100%; display:block; }
+
+  .hud { position:absolute; pointer-events:none; }
+
+  /* ---- Title / start screen ---- */
+  #titleScreen { position:absolute; inset:0; background:radial-gradient(ellipse at center, #1a1524 0%, #060409 75%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:50; }
+  #titleScreen h1 { font-size:52px; letter-spacing:6px; color:#c9b47a; text-shadow:0 0 24px #4a2f0e, 0 2px 2px #000;
+    margin-bottom:8px; text-align:center; }
+  #titleScreen h2 { font-size:15px; letter-spacing:4px; color:#8a8398; font-weight:normal; margin-bottom:38px; }
+  #titleScreen .btn { pointer-events:auto; cursor:pointer; border:1px solid #6b5a33; background:#171320cc;
+    color:#d8c790; padding:12px 44px; font-size:18px; letter-spacing:3px; font-family:inherit; margin:6px;
+    transition:all .2s; }
+  #titleScreen .btn:hover { background:#2a2338; border-color:#c9b47a; box-shadow:0 0 18px #4a3a1055; }
+  #titleScreen .lore { max-width:560px; text-align:center; color:#7d7690; font-size:14px; line-height:1.7;
+    margin-bottom:34px; font-style:italic; }
+
+  /* ---- Vitals ---- */
+  #vitals { left:18px; bottom:18px; width:250px; }
+  .bar { height:13px; background:#00000088; border:1px solid #3a3444; margin-bottom:5px; position:relative; }
+  .bar .fill { height:100%; transition:width .15s; }
+  .bar .lbl { position:absolute; left:6px; top:-1px; font-size:10px; letter-spacing:1px; color:#e8e0ccdd;
+    text-shadow:0 1px 2px #000; }
+  #hpFill { background:linear-gradient(#a83232,#6e1717); }
+  #stFill { background:linear-gradient(#3e9948,#1d5c26); }
+  #huFill { background:linear-gradient(#c98e3c,#7a5115); }
+
+  /* ---- Resources / clock ---- */
+  #resources { right:18px; top:16px; text-align:right; font-size:15px; line-height:1.8; text-shadow:0 1px 3px #000; }
+  #resources .res { background:#00000066; padding:2px 10px; border:1px solid #3a344455; margin-bottom:3px; display:inline-block; }
+  #clock { right:18px; top:auto; }
+  #dayline { left:0; right:0; top:14px; text-align:center; font-size:14px; letter-spacing:2px; color:#cfc7ae;
+    text-shadow:0 1px 3px #000; }
+  #settlement { left:18px; top:16px; font-size:14px; letter-spacing:1px; color:#cfc7ae; text-shadow:0 1px 3px #000;
+    background:#00000066; border:1px solid #3a344455; padding:4px 12px; }
+
+  /* ---- Zone banner ---- */
+  #zoneBanner { left:0; right:0; top:16%; text-align:center; font-size:34px; letter-spacing:8px; color:#d8c790;
+    opacity:0; transition:opacity 1.2s; text-shadow:0 0 22px #000, 0 2px 3px #000; }
+  #zoneSub { left:0; right:0; top:calc(16% + 46px); text-align:center; font-size:14px; letter-spacing:3px;
+    color:#9a92a8; opacity:0; transition:opacity 1.2s; font-style:italic; text-shadow:0 1px 3px #000; }
+
+  /* ---- Crosshair & prompt ---- */
+  #crosshair { left:50%; top:50%; width:5px; height:5px; margin:-2px 0 0 -2px; border-radius:50%;
+    background:#e8e0cc99; box-shadow:0 0 3px #000; }
+  #prompt { left:0; right:0; top:58%; text-align:center; font-size:16px; color:#e8d9a8; text-shadow:0 1px 3px #000;
+    letter-spacing:1px; }
+  #gatherBar { left:50%; top:63%; width:160px; margin-left:-80px; height:7px; background:#00000088;
+    border:1px solid #3a3444; display:none; }
+  #gatherFill { height:100%; background:#c9b47a; width:0%; }
+
+  /* ---- Message log ---- */
+  #log { left:18px; bottom:100px; width:380px; font-size:13px; line-height:1.55; text-shadow:0 1px 2px #000; }
+  #log div { opacity:0.95; transition:opacity 1s; margin-top:2px; }
+
+  /* ---- Build menu ---- */
+  #buildMenu { left:0; right:0; bottom:70px; text-align:center; display:none; }
+  .bslot { display:inline-block; pointer-events:auto; cursor:pointer; width:106px; background:#100d17dd;
+    border:1px solid #3a3444; margin:0 3px; padding:7px 4px 6px; font-size:11px; vertical-align:top; }
+  .bslot.sel { border-color:#c9b47a; background:#241d33dd; box-shadow:0 0 12px #4a3a1066; }
+  .bslot .bkey { color:#c9b47a; font-size:13px; }
+  .bslot .bname { font-size:12px; color:#e8e0cc; margin:2px 0; }
+  .bslot .bcost { color:#8f879e; }
+  .bslot .bdesc { color:#6e6880; font-size:10px; margin-top:2px; line-height:1.3; }
+
+  /* ---- Help ---- */
+  #help { right:18px; bottom:18px; font-size:11px; color:#79728a; text-align:right; line-height:1.6;
+    text-shadow:0 1px 2px #000; }
+  #helpFull { left:50%; top:50%; transform:translate(-50%,-50%); width:440px; background:#0d0a14ee;
+    border:1px solid #6b5a33; padding:22px 30px; font-size:13px; line-height:1.9; display:none; z-index:40; }
+  #helpFull h3 { color:#c9b47a; letter-spacing:3px; margin-bottom:8px; text-align:center; }
+  #helpFull b { color:#d8c790; display:inline-block; width:120px; }
+
+  /* ---- Damage vignette / death ---- */
+  #dmgVignette { inset:0; box-shadow:inset 0 0 140px #a0101000; transition:box-shadow .3s; }
+  #deathScreen { position:absolute; inset:0; background:#100305dd; display:none; z-index:45;
+    flex-direction:column; align-items:center; justify-content:center; }
+  #deathScreen h1 { font-size:44px; letter-spacing:8px; color:#a83232; margin-bottom:14px; text-shadow:0 0 30px #500; }
+  #deathScreen p { color:#9a92a8; margin-bottom:26px; font-style:italic; }
+  #deathScreen .btn { pointer-events:auto; cursor:pointer; border:1px solid #6b5a33; background:#171320;
+    color:#d8c790; padding:10px 36px; font-size:16px; letter-spacing:2px; font-family:inherit; }
+
+  #bossBar { left:50%; top:44px; width:420px; margin-left:-210px; display:none; }
+  #bossBar .bname { text-align:center; font-size:13px; letter-spacing:4px; color:#d8c790; margin-bottom:3px;
+    text-shadow:0 1px 3px #000; }
+  #bossFill { background:linear-gradient(#7a2ea8,#3d1060); }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="titleScreen">
+  <h1>KINGDOMS OF THE CURSED</h1>
+  <h2>A DARK MEDIEVAL FRONTIER</h2>
+  <div class="lore">You are not the chosen one. You are an ordinary survivor attempting to establish
+    civilization in a cursed wilderness. Every wall is built by hand. Every villager matters.
+    Every return home should feel rewarding.</div>
+  <button class="btn" id="btnNew">NEW SETTLEMENT</button>
+  <button class="btn" id="btnLoad" style="display:none">CONTINUE</button>
+  <div class="lore" style="margin-top:26px;font-size:12px">Click to lock the mouse once in game &mdash; press H for help</div>
+</div>
+
+<div id="deathScreen">
+  <h1>YOU HAVE FALLEN</h1>
+  <p>The frontier claims another soul... but the settlement endures.</p>
+  <button class="btn" id="btnRespawn">RISE AGAIN</button>
+</div>
+
+<div class="hud" id="dmgVignette"></div>
+<div class="hud" id="settlement">Lone Campfire</div>
+<div class="hud" id="dayline">Day 1 &mdash; Dawn</div>
+<div class="hud" id="resources"></div>
+<div class="hud" id="vitals">
+  <div class="bar"><div class="fill" id="hpFill" style="width:100%"></div><span class="lbl">HEALTH</span></div>
+  <div class="bar"><div class="fill" id="stFill" style="width:100%"></div><span class="lbl">STAMINA</span></div>
+  <div class="bar"><div class="fill" id="huFill" style="width:100%"></div><span class="lbl">HUNGER</span></div>
+</div>
+<div class="hud" id="bossBar"><div class="bname" id="bossName"></div>
+  <div class="bar"><div class="fill" id="bossFill" style="width:100%"></div></div></div>
+<div class="hud" id="zoneBanner"></div>
+<div class="hud" id="zoneSub"></div>
+<div class="hud" id="crosshair"></div>
+<div class="hud" id="prompt"></div>
+<div class="hud" id="gatherBar"><div id="gatherFill"></div></div>
+<div class="hud" id="log"></div>
+<div class="hud" id="buildMenu"></div>
+<div class="hud" id="help">B build &middot; E interact &middot; F eat &middot; H help &middot; K save</div>
+<div class="hud" id="helpFull">
+  <h3>THE FRONTIER SURVIVAL GUIDE</h3>
+  <div><b>W A S D</b> Move &nbsp;&middot;&nbsp; <b>Mouse</b> Camera</div>
+  <div><b>Shift</b> Sprint (stamina)</div>
+  <div><b>Space</b> Dodge roll (i-frames)</div>
+  <div><b>Left Mouse</b> Attack / place building</div>
+  <div><b>Right Mouse</b> Block (hold)</div>
+  <div><b>E (hold)</b> Gather / recruit / loot</div>
+  <div><b>F</b> Eat food (+hunger, +health)</div>
+  <div><b>B</b> Build menu &nbsp;<b>R</b> rotate &nbsp;<b>X</b> demolish</div>
+  <div><b>K</b> Save game &nbsp;&middot;&nbsp; <b>H</b> close help</div>
+  <div style="margin-top:10px;color:#8f879e;font-style:italic">The night belongs to the cursed. Build walls,
+  post torches, recruit wanderers from the King's Road. Ghosts fear the light. The far north belongs
+  to something worse.</div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
