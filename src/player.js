@@ -1,7 +1,7 @@
 // Player: third-person controller, orbit camera, melee combat, block, dodge, gather.
 import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, resolveCollisions, isNight } from './state.js';
-import { makeHumanoid, addSword, pickupLoot } from './entities.js';
+import { makeCharacter, addSword, pickupLoot } from './entities.js';
 import { buildState, tryPlace } from './buildings.js';
 import { recruit } from './villagers.js';
 
@@ -30,7 +30,7 @@ export class Player {
     this.gatherHold = 0;
     this.interact = null;
 
-    this.fig = makeHumanoid(0x3f4a5c, 0xd8ae84);
+    this.fig = makeCharacter({ tunic: 0x46586e, skin: 0xd8ae84, hair: 0x3a2a18, pants: 0x4a3c2c });
     addSword(this.fig.armPivot, 0xb8bec9, 0.95);
     this.mesh = this.fig.group;
     G.scene.add(this.mesh);
@@ -246,6 +246,16 @@ export class Player {
       const d = dist2d(this.pos.x, this.pos.z, w.pos.x, w.pos.z);
       if (d < 3.4 && (!best || d < bd)) { bd = d; best = { kind: 'recruit', obj: w, label: `recruit ${w.name}` }; }
     }
+    // construction sites: hold E to hammer the frame into a finished building
+    for (const b of G.buildings) {
+      if (b.built >= 1) continue;
+      const d = dist2d(this.pos.x, this.pos.z, b.x, b.z);
+      const reach = Math.max(b.def.r, 2) + 2.4;
+      if (d < reach && (!best || d < bd)) {
+        bd = d;
+        best = { kind: 'construct', obj: b, label: `construct ${b.def.name} (${Math.round(b.built * 100)}%)`, hold: true };
+      }
+    }
     // resources
     if (!best) {
       const r = G.world.nearestResource(this.pos.x, this.pos.z);
@@ -253,9 +263,15 @@ export class Player {
     }
     this.interact = best;
 
+    let holdProgress = 0;
     if (best && G.keys['KeyE']) {
-      if (best.hold) {
+      if (best.kind === 'construct') {
+        best.obj.construct(dt);
+        holdProgress = best.obj.built;
+        this._hammer(dt);
+      } else if (best.hold) {
         this.gatherHold += dt;
+        holdProgress = this.gatherHold / 1.4;
         if (this.gatherHold >= 1.4) {
           this.gatherHold = 0;
           G.world.harvest(best.obj.kind, best.obj.i);
@@ -273,7 +289,16 @@ export class Player {
     if (!G.keys['KeyE']) this._ePressed = false;
 
     G.ui.prompt(best ? `[E] ${best.label}` : '');
-    G.ui.gatherProgress(best && best.hold && G.keys['KeyE'] ? this.gatherHold / 1.4 : 0);
+    G.ui.gatherProgress(best && best.hold && G.keys['KeyE'] ? holdProgress : 0);
+  }
+
+  // rhythmic arm swing while building at a construction site
+  _hammer(dt) {
+    this._hammerT = (this._hammerT || 0) - dt;
+    if (this._hammerT <= 0) {
+      this._hammerT = 0.7;
+      this.atkAnim = 0.35;
+    }
   }
 
   _updateCamera() {

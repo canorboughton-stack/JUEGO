@@ -47,6 +47,9 @@ screen to lock the mouse.
 1. Leave the village. Chop trees in the **Dark Forest** (east), mine stone in the
    **Rocky Hills** (west), pick berries in the meadows.
 2. Return home. Build walls, torches, farms, houses, guard posts, storage.
+   Large buildings use **staged construction** (Medieval-Dynasty style): paying the
+   materials raises a timber frame on the site — then hold `E` to hammer it into the
+   finished timber-framed, thatch-roofed building.
 3. Recruit **wanderers** traveling the King's Road (you need house beds). They become
    farmers (grow food) or guards (defend the settlement).
 4. Survive the night. Ghouls wake in the **Cursed Ruins**, ghosts drift out (torchlight
@@ -85,6 +88,7 @@ ROCKY HILLS    THE SETTLEMENT    DARK FOREST
 ```
 index.html        shell + HUD markup/styles
 lib/three.module.js  vendored Three.js (r160)
+src/models.js     character rig + medieval architecture helpers (timber, thatch, logs)
 src/state.js      shared game state, collision helpers
 src/world.js      terrain, map zones, vegetation, POIs, day/night
 src/entities.js   creature figures, AI, spawning, loot

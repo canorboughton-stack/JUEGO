@@ -2,12 +2,17 @@
 // if you have beds. Villagers take jobs: farmer (works farms) or guard (defends).
 import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, resolveCollisions } from './state.js';
-import { makeHumanoid, addSword } from './entities.js';
+import { makeCharacter, addSword } from './entities.js';
 import { POI } from './world.js';
 
 const NAMES = ['Aldric', 'Berta', 'Cedric', 'Duna', 'Edda', 'Falk', 'Greta', 'Hamon',
   'Isolde', 'Jorun', 'Kessa', 'Lothar', 'Mira', 'Nolan', 'Ottila', 'Piers'];
 let nameIdx = 0;
+
+// homespun tunic colors so villagers don't look like clones
+const TUNICS = [0x8a8070, 0x7a6a52, 0x6e7a5a, 0x8a6a5a, 0x6a6a7a, 0x9a8a6a];
+const HAIRS = [0x4a3320, 0x2e2318, 0x6e5a3a, 0x8a7a5a, 0x3a3a3a];
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
 // ---------- wanderers (recruitable) ----------
 export class Wanderer {
@@ -15,7 +20,8 @@ export class Wanderer {
     this.name = NAMES[nameIdx++ % NAMES.length];
     this.pos = new THREE.Vector3(fromWest ? -192 : 192, 0, POI.roadZ);
     this.dir = fromWest ? 1 : -1;
-    this.fig = makeHumanoid(0x7a7060, 0xc9a07a);
+    // travelers on the King's Road wear road-hoods against the weather
+    this.fig = makeCharacter({ tunic: pick(TUNICS), skin: 0xc9a07a, hat: 'hood', hatColor: 0x5a5346 });
     this.mesh = this.fig.group;
     G.scene.add(this.mesh);
     this.walkPhase = 0;
@@ -67,13 +73,15 @@ export class Villager {
   _build(role) {
     if (this.mesh) G.scene.remove(this.mesh);
     this.role = role;
+    if (!this.hair) this.hair = pick(HAIRS);
+    if (!this.tunic) this.tunic = pick(TUNICS);
     if (role === 'guard') {
-      this.fig = makeHumanoid(0x4a5568, 0xc9a07a);
+      this.fig = makeCharacter({ tunic: 0x4a5568, skin: 0xc9a07a, hat: 'helm', pants: 0x3a3f4a });
       addSword(this.fig.armPivot, 0x8a909c, 0.7);
     } else if (role === 'farmer') {
-      this.fig = makeHumanoid(0x7a6a3a, 0xc9a07a);
+      this.fig = makeCharacter({ tunic: 0x7a6a3a, skin: 0xc9a07a, hat: 'straw', hair: this.hair });
     } else {
-      this.fig = makeHumanoid(0x8a8070, 0xc9a07a);
+      this.fig = makeCharacter({ tunic: this.tunic, skin: 0xc9a07a, hair: this.hair });
     }
     this.mesh = this.fig.group;
     this.mesh.position.copy(this.pos);
@@ -209,7 +217,7 @@ export function recruit(w) {
 export function assignJobs() {
   const idle = () => G.villagers.find(v => !v.dead && !v.job);
   for (const b of G.buildings) {
-    if (b.destroyed || b.worker && !b.worker.dead) continue;
+    if (b.destroyed || b.built < 1 || b.worker && !b.worker.dead) continue;
     if (b.type !== 'farm' && b.type !== 'guardpost') continue;
     const v = idle();
     if (!v) break;

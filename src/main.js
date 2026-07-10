@@ -75,7 +75,7 @@ function saveGame() {
       resources: G.resources,
       werewolfSlain: G.werewolfSlain,
       player: { x: G.player.pos.x, z: G.player.pos.z, hp: G.player.hp, hunger: G.player.hunger },
-      buildings: G.buildings.map(b => ({ type: b.type, x: b.x, z: b.z, rot: b.rotY, hp: b.hp })),
+      buildings: G.buildings.map(b => ({ type: b.type, x: b.x, z: b.z, rot: b.rotY, hp: b.hp, built: b.built })),
       villagers: G.villagers.filter(v => !v.dead).map(v => ({ name: v.name, role: v.role, x: v.pos.x, z: v.pos.z })),
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -94,7 +94,7 @@ function loadGame() {
     Object.assign(G.resources, d.resources);
     G.werewolfSlain = !!d.werewolfSlain;
     for (const b of d.buildings) {
-      const nb = placeBuilding(b.type, b.x, b.z, b.rot);
+      const nb = placeBuilding(b.type, b.x, b.z, b.rot, b.built ?? 1);
       nb.hp = b.hp;
     }
     for (const v of d.villagers) {

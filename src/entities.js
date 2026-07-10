@@ -4,6 +4,7 @@
 import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, isNight, resolveCollisions, blockingBuilding } from './state.js';
 import { POI } from './world.js';
+import { makeCharacter, bx, cyl } from './models.js';
 
 // ---------- low-poly figure builders ----------
 export function makeBeast(len, hgt, wid, bodyC, headC) {
@@ -24,29 +25,11 @@ export function makeBeast(len, hgt, wid, bodyC, headC) {
   return { group: g, legs, head };
 }
 
+// Back-compat wrapper: the detailed rig from models.js with simple color mapping.
 export function makeHumanoid(bodyC, headC, scale = 1) {
-  const g = new THREE.Group();
-  const bmat = new THREE.MeshLambertMaterial({ color: bodyC });
-  const hmat = new THREE.MeshLambertMaterial({ color: headC });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.34), bmat);
-  body.position.y = 1.05; body.castShadow = true; g.add(body);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.34), hmat);
-  head.position.y = 1.66; head.castShadow = true; g.add(head);
-  const lgeo = new THREE.BoxGeometry(0.2, 0.66, 0.22);
-  const legs = [];
-  for (const sx of [-1, 1]) {
-    const l = new THREE.Mesh(lgeo, bmat);
-    l.position.set(sx * 0.17, 0.33, 0); g.add(l); legs.push(l);
-  }
-  const armGeo = new THREE.BoxGeometry(0.16, 0.62, 0.18);
-  const armL = new THREE.Mesh(armGeo, bmat); armL.position.set(-0.44, 1.15, 0); g.add(armL);
-  // right arm pivots at the shoulder so weapon swings look right
-  const armPivot = new THREE.Group(); armPivot.position.set(0.44, 1.42, 0);
-  const armR = new THREE.Mesh(armGeo, bmat); armR.position.y = -0.28; armPivot.add(armR);
-  g.add(armPivot);
-  g.scale.setScalar(scale);
-  return { group: g, legs, armPivot, armL, head };
+  return makeCharacter({ tunic: bodyC, skin: headC, scale });
 }
+export { makeCharacter };
 
 export function addSword(armPivot, color = 0x9aa0ad, len = 0.9) {
   const blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, len, 0.16),
@@ -77,16 +60,31 @@ export const CREATURE_DEFS = {
   blackdog: { hp: 35,  dmg: 15, speed: 9.5, aggro: 32, atkR: 1.9, cd: 0.9, r: 0.5, food: 1, nocturnal: 'vanish',
               make: () => makeBeast(1.3, 0.9, 0.5, 0x14141a, 0x0c0c10), name: 'Black Dog' },
   ghoul:    { hp: 95,  dmg: 18, speed: 3.4, aggro: 20, atkR: 2.0, cd: 1.6, r: 0.6, food: 0, nocturnal: 'dormant',
-              make: () => makeHumanoid(0x5a6a4a, 0x76866a), name: 'Ghoul' },
+              make: () => makeCharacter({ tunic: 0x4a5240, skin: 0x76866a, pants: 0x3e4636, boots: 0x76866a }),
+              name: 'Ghoul' },
   rotghoul: { hp: 180, dmg: 26, speed: 2.6, aggro: 18, atkR: 2.2, cd: 2.0, r: 0.75, food: 0, nocturnal: 'dormant',
-              make: () => makeHumanoid(0x4a5638, 0x5c6a44, 1.35), name: 'Rot Ghoul' },
+              make: () => makeCharacter({ tunic: 0x42502e, skin: 0x5c6a44, pants: 0x36422a, boots: 0x5c6a44, scale: 1.35 }),
+              name: 'Rot Ghoul' },
   bandit:   { hp: 70,  dmg: 14, speed: 6.2, aggro: 19, atkR: 2.1, cd: 1.2, r: 0.55, food: 1, loot: { wood: 3, stone: 2 },
-              make: () => { const h = makeHumanoid(0x6b3a2a, 0xc9a07a); addSword(h.armPivot, 0x777d88, 0.7); return h; },
-              name: 'Bandit' },
+              make: () => {
+                const h = makeCharacter({ tunic: 0x6b3a2a, skin: 0xc9a07a, hat: 'hood', hatColor: 0x2e2a26 });
+                addSword(h.armPivot, 0x777d88, 0.7); return h;
+              }, name: 'Bandit' },
   ghost:    { hp: 50,  dmg: 11, speed: 4.8, aggro: 30, atkR: 2.2, cd: 1.4, r: 0.5, food: 0, floats: true,
               nocturnal: 'vanish', noCollide: true, make: makeGhost, name: 'Ghost' },
   werewolf: { hp: 650, dmg: 38, speed: 8.5, aggro: 42, atkR: 2.9, cd: 1.5, r: 1.1, food: 20, boss: true,
-              make: () => { const b = makeHumanoid(0xdfe3ea, 0xc9ced8, 2.1); return b; }, name: 'The White Werewolf' },
+              make: () => {
+                const b = makeCharacter({ tunic: 0xdfe3ea, skin: 0xc9ced8, pants: 0xcfd4dc, boots: 0xb8bec9, scale: 2.1 });
+                const fur = new THREE.MeshLambertMaterial({ color: 0xc9ced8 });
+                for (const sx of [-1, 1]) {  // ears
+                  const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 4), fur);
+                  ear.position.set(sx * 0.12, 0.52, -0.02); b.head.add(ear);
+                }
+                bx(b.head, 0.16, 0.13, 0.2, fur, 0, 0.13, 0.22);   // snout
+                bx(b.head, 0.05, 0.05, 0.02, new THREE.MeshBasicMaterial({ color: 0xcc2222 }), -0.08, 0.24, 0.16);
+                bx(b.head, 0.05, 0.05, 0.02, new THREE.MeshBasicMaterial({ color: 0xcc2222 }), 0.08, 0.24, 0.16);
+                return b;
+              }, name: 'The White Werewolf' },
 };
 
 let nextId = 1;
