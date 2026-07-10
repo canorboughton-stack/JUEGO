@@ -11,19 +11,22 @@ export const G = {
   time: 0.3,
   DAY_LENGTH: 300, // seconds of real time per full day
 
-  // settlement economy
-  resources: { wood: 30, stone: 10, food: 6 },
-  resourceCap: 200,
+  // inventories (brief §5): player carries; settlement stock lives in chests
+  playerInv: null,   // initialized in main.js from storage.emptyInv()
 
   // world population
   buildings: [],   // Building instances
   creatures: [],   // Creature instances
   villagers: [],   // Villager instances
   wanderers: [],   // recruitable NPCs on the road
+  animals: [],     // livestock
   loots: [],       // dropped loot bags {mesh,x,z,items}
-  colliders: [],   // {x, z, r, owner} circles blocking movement
+  colliders: [],   // {x, z, r, owner, gate?} circles blocking movement
 
-  popCap: 0,       // villager capacity from houses
+  popCap: 0,       // villager capacity from houses (beds)
+  stage: -1,       // settlement progression stage (-1 wilderness, 0..3 per brief §15)
+  taxes: { nextDay: 0, owed: 0, paid: true },
+  uiOpen: false,   // a DOM panel (storage/craft/recruit/settlement) is open
   werewolfSlain: false,
   raidActive: false,
 
@@ -45,9 +48,12 @@ export function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 export function dist2d(ax, az, bx, bz) { return Math.hypot(ax - bx, az - bz); }
 
 // Push a circle position out of all colliders. Returns corrected {x,z}.
-export function resolveCollisions(x, z, r, ignoreOwner) {
+// Gates/pens/doors carry `gate: true`: friendlies pass through (auto-open),
+// hostiles are blocked unless the structure was left open.
+export function resolveCollisions(x, z, r, ignoreOwner, isFriendly = false) {
   for (const c of G.colliders) {
     if (ignoreOwner && c.owner === ignoreOwner) continue;
+    if (c.gate && (isFriendly || (c.owner && c.owner.open))) continue;
     const dx = x - c.x, dz = z - c.z;
     const d = Math.hypot(dx, dz);
     const min = r + c.r;

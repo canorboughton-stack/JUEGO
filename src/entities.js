@@ -5,6 +5,7 @@ import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, isNight, resolveCollisions, blockingBuilding } from './state.js';
 import { POI } from './world.js';
 import { makeCharacter, bx, cyl } from './models.js';
+import { playerAdd } from './storage.js';
 
 // ---------- low-poly figure builders ----------
 export function makeBeast(len, hgt, wid, bodyC, headC) {
@@ -53,26 +54,32 @@ function makeGhost() {
 
 // ---------- creature definitions ----------
 export const CREATURE_DEFS = {
-  boar:     { hp: 60,  dmg: 16, speed: 6.5, aggro: 11, atkR: 1.8, cd: 1.5, r: 0.7, food: 3,
+  boar:     { hp: 60,  dmg: 16, speed: 6.5, aggro: 11, atkR: 1.8, cd: 1.5, r: 0.7,
+              loot: { meat: 3, hide: 1 },
               make: () => makeBeast(1.5, 1.0, 0.8, 0x5c4028, 0x4a3220), name: 'Boar' },
-  wolf:     { hp: 45,  dmg: 12, speed: 8,   aggro: 26, atkR: 1.9, cd: 1.1, r: 0.55, food: 2,
+  wolf:     { hp: 45,  dmg: 12, speed: 8,   aggro: 26, atkR: 1.9, cd: 1.1, r: 0.55,
+              loot: { meat: 1, hide: 1 }, prefs: ['livestock', 'villager', 'player'],
               make: () => makeBeast(1.4, 0.95, 0.55, 0x6e6e78, 0x5a5a63), name: 'Wolf' },
-  blackdog: { hp: 35,  dmg: 15, speed: 9.5, aggro: 32, atkR: 1.9, cd: 0.9, r: 0.5, food: 1, nocturnal: 'vanish',
+  blackdog: { hp: 35,  dmg: 15, speed: 9.5, aggro: 32, atkR: 1.9, cd: 0.9, r: 0.5, nocturnal: 'vanish',
+              loot: { hide: 1 }, prefs: ['livestock', 'villager', 'player'],
               make: () => makeBeast(1.3, 0.9, 0.5, 0x14141a, 0x0c0c10), name: 'Black Dog' },
-  ghoul:    { hp: 95,  dmg: 18, speed: 3.4, aggro: 20, atkR: 2.0, cd: 1.6, r: 0.6, food: 0, nocturnal: 'dormant',
+  ghoul:    { hp: 95,  dmg: 18, speed: 3.4, aggro: 20, atkR: 2.0, cd: 1.6, r: 0.6, nocturnal: 'dormant',
+              loot: { incense: 1 },
               make: () => makeCharacter({ tunic: 0x4a5240, skin: 0x76866a, pants: 0x3e4636, boots: 0x76866a }),
               name: 'Ghoul' },
-  rotghoul: { hp: 180, dmg: 26, speed: 2.6, aggro: 18, atkR: 2.2, cd: 2.0, r: 0.75, food: 0, nocturnal: 'dormant',
+  rotghoul: { hp: 180, dmg: 26, speed: 2.6, aggro: 18, atkR: 2.2, cd: 2.0, r: 0.75, nocturnal: 'dormant',
+              loot: { incense: 2 },
               make: () => makeCharacter({ tunic: 0x42502e, skin: 0x5c6a44, pants: 0x36422a, boots: 0x5c6a44, scale: 1.35 }),
               name: 'Rot Ghoul' },
-  bandit:   { hp: 70,  dmg: 14, speed: 6.2, aggro: 19, atkR: 2.1, cd: 1.2, r: 0.55, food: 1, loot: { wood: 3, stone: 2 },
+  bandit:   { hp: 70,  dmg: 14, speed: 6.2, aggro: 19, atkR: 2.1, cd: 1.2, r: 0.55, loot: { wood: 3, stone: 2 },
               make: () => {
                 const h = makeCharacter({ tunic: 0x6b3a2a, skin: 0xc9a07a, hat: 'hood', hatColor: 0x2e2a26 });
                 addSword(h.armPivot, 0x777d88, 0.7); return h;
               }, name: 'Bandit' },
-  ghost:    { hp: 50,  dmg: 11, speed: 4.8, aggro: 30, atkR: 2.2, cd: 1.4, r: 0.5, food: 0, floats: true,
-              nocturnal: 'vanish', noCollide: true, make: makeGhost, name: 'Ghost' },
-  werewolf: { hp: 650, dmg: 38, speed: 8.5, aggro: 42, atkR: 2.9, cd: 1.5, r: 1.1, food: 20, boss: true,
+  ghost:    { hp: 50,  dmg: 11, speed: 4.8, aggro: 30, atkR: 2.2, cd: 1.4, r: 0.5, floats: true,
+              loot: { incense: 2 }, nocturnal: 'vanish', noCollide: true, make: makeGhost, name: 'Ghost' },
+  werewolf: { hp: 650, dmg: 38, speed: 8.5, aggro: 42, atkR: 2.9, cd: 1.5, r: 1.1, boss: true,
+              loot: { meat: 10, hide: 5 }, prefs: ['livestock', 'villager', 'player'],
               make: () => {
                 const b = makeCharacter({ tunic: 0xdfe3ea, skin: 0xc9ced8, pants: 0xcfd4dc, boots: 0xb8bec9, scale: 2.1 });
                 const fur = new THREE.MeshLambertMaterial({ color: 0xc9ced8 });
@@ -128,11 +135,7 @@ export class Creature {
     this.dead = true;
     G.scene.remove(this.mesh);
     const d = this.def;
-    if (d.food || d.loot) {
-      const items = Object.assign({}, d.loot || {});
-      if (d.food) items.food = (items.food || 0) + d.food;
-      dropLoot(this.pos.x, this.pos.z, items);
-    }
+    if (d.loot) dropLoot(this.pos.x, this.pos.z, Object.assign({}, d.loot));
     if (d.boss) {
       G.werewolfSlain = true;
       G.ui.log('★ THE WHITE WEREWOLF HAS FALLEN. The wilderness bows to no beast tonight. ★');
@@ -140,19 +143,33 @@ export class Creature {
     }
   }
 
-  // choose nearest living target among player + villagers (and guards)
+  // choose a target respecting the creature's preferences (brief §11):
+  // wolves/black dogs/werewolf prefer livestock; everything falls back to the living.
   _acquireTarget() {
     const d = this.def;
-    let best = null, bd = d.aggro;
-    const consider = (t, x, z) => {
-      const dd = dist2d(this.pos.x, this.pos.z, x, z);
-      if (dd < bd) { bd = dd; best = t; }
-    };
-    if (G.player && !G.player.dead) consider(G.player, G.player.pos.x, G.player.pos.z);
-    for (const v of G.villagers) if (!v.dead) consider(v, v.pos.x, v.pos.z);
-    // raiders always know where the village is
-    if (!best && this.raider) return { village: true };
-    return best;
+    const prefs = d.prefs || ['living'];
+    for (const group of prefs) {
+      let best = null, bd = d.aggro;
+      const consider = (t, x, z) => {
+        const dd = dist2d(this.pos.x, this.pos.z, x, z);
+        if (dd < bd) { bd = dd; best = t; }
+      };
+      if (group === 'player' || group === 'living') {
+        if (G.player && !G.player.dead) consider(G.player, G.player.pos.x, G.player.pos.z);
+      }
+      if (group === 'villager' || group === 'living') {
+        for (const v of G.villagers) if (!v.dead && !v.inside) consider(v, v.pos.x, v.pos.z);
+      }
+      if (group === 'livestock') {
+        for (const a of G.animals) if (!a.dead) consider(a, a.pos.x, a.pos.z);
+      }
+      if (best) return best;
+    }
+    // players count even for livestock-hunters when very close
+    if (G.player && !G.player.dead &&
+        dist2d(this.pos.x, this.pos.z, G.player.pos.x, G.player.pos.z) < d.aggro * 0.5)
+      return G.player;
+    return null;
   }
 
   _targetPos(t) {
@@ -208,6 +225,70 @@ export class Creature {
       }
     }
 
+    // --- werewolf feeds and leaves (brief §11): hunt, kill, retreat ---
+    if (d.boss && this.satiateTimer > 0) {
+      this.satiateTimer -= dt;
+      this.target = null;
+      this._moveToward(this.home.x, this.home.z, dt, d.speed * 0.8);
+      this.hp = Math.min(this.maxHp, this.hp + dt * 10);
+      this._settle(dt); this._updateBossBar();
+      return;
+    }
+
+    // --- bandit raiders steal from Storage Chests and retreat (brief §11) ---
+    if (this.raider && !this.target && !this.dead) {
+      if (this.stole) {
+        // escape west along the road with the loot
+        this._moveToward(-190, 40, dt, d.speed);
+        if (this.pos.x < -185) { this.dead = true; G.scene.remove(this.mesh); }
+        this._settle(dt);
+        this.atkTimer -= dt;
+        this.target = this._acquireTarget(); // fight back if intercepted
+        return;
+      }
+      const chests = G.buildings.filter(b => b.type === 'chest' && !b.destroyed && b.built >= 1);
+      let chest = null, cd2 = Infinity;
+      for (const c of chests) {
+        const dd = dist2d(this.pos.x, this.pos.z, c.x, c.z);
+        if (dd < cd2) { cd2 = dd; chest = c; }
+      }
+      if (chest) {
+        if (cd2 > 2.2) this._moveToward(chest.x, chest.z, dt, d.speed);
+        else {
+          // grab whatever is inside
+          this.stealTick = (this.stealTick || 0) + dt;
+          if (this.stealTick > 0.5) {
+            this.stealTick = 0;
+            let taken = 0;
+            for (const res of Object.keys(chest.store)) {
+              while (chest.store[res] > 0 && taken < 2) { chest.store[res]--; taken++; }
+            }
+            this.stolenLoad = (this.stolenLoad || 0) + taken;
+            if (taken === 0 || this.stolenLoad >= 8) {
+              this.stole = true;
+              if (this.stolenLoad > 0) G.ui.log(`A bandit made off with ${this.stolenLoad} goods from your storage!`);
+            }
+          }
+        }
+      }
+      // still react to defenders while heading for the chest
+      this.atkTimer -= dt;
+      this.target = this._acquireTarget();
+      if (!chest && !this.target) {
+        // no storage to rob: sweep toward the settlement heart, then withdraw
+        const fire = G.buildings.find(b => b.type === 'campfire' && !b.destroyed);
+        const cx = fire ? fire.x : 0, cz = fire ? fire.z : 0;
+        if (dist2d(this.pos.x, this.pos.z, cx, cz) > 12) this._moveToward(cx, cz, dt, d.speed);
+        else this.stole = true; // nothing worth taking
+      }
+      if (!this.target) {
+        // blocked on the way in? smash through (walls delay, gates preferred below)
+        this._smashIfBlocked(dt);
+        this._settle(dt);
+        return;
+      }
+    }
+
     // --- target acquisition ---
     this.atkTimer -= dt;
     if (!this.target || this.target.dead) {
@@ -239,6 +320,11 @@ export class Creature {
           this.atkTimer = d.cd;
           this.target.takeDamage(d.dmg, this);
           this._lunge();
+          // the werewolf hunts, kills, feeds, and withdraws — no siege
+          if (d.boss && (this.target.dead || this.target.hp <= 0)) {
+            this.satiateTimer = 100;
+            G.ui.log('The White Werewolf has fed... it melts back into the north.');
+          }
         }
       } else {
         this.target = null; // reached empty village center
@@ -255,18 +341,34 @@ export class Creature {
         this._moveToward(this.wanderTo.x, this.wanderTo.z, dt, d.speed * 0.35);
     }
 
-    // walls delay enemies — if stuck against a building, smash it
-    if (this.blockedTime > 1.6 && !d.noCollide) {
-      const b = blockingBuilding(this.pos.x, this.pos.z, d.r);
-      if (b && this.atkTimer <= 0) {
-        this.atkTimer = d.cd;
-        b.takeDamage(d.dmg * 0.8);
-        this._lunge();
-      }
-    }
+    // walls delay enemies — if stuck against a building while pursuing, smash it.
+    // Creatures never siege idle structures (brief §11): only when they want through.
+    if (this.target || this.raider) this._smashIfBlocked(dt);
+    else this.lastBlockedGate = false;
 
     this._settle(dt);
     if (d.boss) this._updateBossBar();
+  }
+
+  _smashIfBlocked(dt) {
+    const d = this.def;
+    if (this.blockedTime <= 1.6 || d.noCollide) return;
+    let b = blockingBuilding(this.pos.x, this.pos.z, d.r);
+    if (!b) return;
+    // prefer the gate over adjacent walls — it's the logical entry point
+    if (!b.def.gate) {
+      for (const g2 of G.buildings) {
+        if (g2.def.gate && !g2.destroyed && dist2d(this.pos.x, this.pos.z, g2.x, g2.z) < 7) { b = g2; break; }
+      }
+    }
+    this.lastBlockedGate = !!b.def.gate;
+    if (this.atkTimer <= 0) {
+      this.atkTimer = d.cd;
+      b.takeDamage(d.dmg * 0.8);
+      this._lunge();
+      // bandits sometimes put buildings to the torch during raids
+      if (this.type === 'bandit' && this.raider) b.ignite(0.1);
+    }
   }
 
   _moveToward(x, z, dt, speed) {
@@ -349,10 +451,10 @@ export function updateLoots(dt) {
 export function pickupLoot(l) {
   const parts = [];
   for (const [k, v] of Object.entries(l.items)) {
-    G.resources[k] = (G.resources[k] || 0) + v;
-    parts.push(`+${v} ${k}`);
+    const got = playerAdd(k, v);
+    if (got > 0) parts.push(`+${got} ${k}`);
   }
-  G.ui.log(`Looted: ${parts.join(', ')}`);
+  if (parts.length) G.ui.log(`Looted: ${parts.join(', ')}`);
   G.scene.remove(l.mesh);
   G.loots.splice(G.loots.indexOf(l), 1);
 }

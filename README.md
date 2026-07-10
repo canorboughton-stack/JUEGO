@@ -45,18 +45,29 @@ screen to lock the mouse.
 **Explore → Survive → Build → Defend**
 
 1. Leave the village. Chop trees in the **Dark Forest** (east), mine stone in the
-   **Rocky Hills** (west), pick berries in the meadows.
-2. Return home. Build walls, torches, farms, houses, guard posts, storage.
-   Large buildings use **staged construction** (Medieval-Dynasty style): paying the
-   materials raises a timber frame on the site — then hold `E` to hammer it into the
-   finished timber-framed, thatch-roofed building.
-3. Recruit **wanderers** traveling the King's Road (you need house beds). They become
-   farmers (grow food) or guards (defend the settlement).
-4. Survive the night. Ghouls wake in the **Cursed Ruins**, ghosts drift out (torchlight
-   burns them), black dogs prowl — and every third night, **bandits raid** from the west.
-5. Grow: *Lone Campfire → Outpost → Village → Fortified Frontier Settlement*.
+   **Rocky Hills** (west), gather wild cabbage in the meadows, hunt for meat and hide.
+2. Return home. Your campfire claims **60m of territory** — you can only build inside
+   it (never on the King's Road). Watch Positions expand territory. Large buildings use
+   **staged construction**: pay materials, a timber frame rises, hold `E` to hammer it up.
+3. Deposit resources in **Storage Chests** — the settlement's shared stock. Villagers
+   eat 1 food/day from it; crafting and repairs draw from it.
+4. Recruit **wanderers** on the King's Road (needs a free bed; guards need a crafted
+   weapon). Farmers plant corn/cabbage, harvest, and physically carry crops to storage.
+   Guards patrol 25m around their post and never chase past 45m.
+5. Survive the night. Ghouls wake in the **Cursed Ruins**, ghosts drift through walls
+   (torchlight burns them), wolves hunt your livestock — and every third night,
+   **bandits raid** to loot your chests and torch your buildings.
+6. React: the **village alert** escalates Calm → Suspicious → Under Attack → Recovery.
+   Farmers flee to their shacks; guards respond by priority (villagers > livestock >
+   gate > walls). Repair damage with the hammer; beat out fires before they spread.
+7. Grow through data-driven stages: *Camp → Homestead → Village → Fortified
+   Settlement* — and from Village on, the Kingdom collects its food levy every 3 days.
 
-The far north belongs to the **White Werewolf**. Enter the monolith ring at your peril.
+Press **Tab** for the settlement management panel: population, beds, food, alert level,
+villager states and problems, farm states, warnings, taxes.
+
+The far north belongs to the **White Werewolf**. It hunts the weak, feeds, and
+withdraws — enter the monolith ring at your peril.
 
 ## The map
 
@@ -89,14 +100,19 @@ ROCKY HILLS    THE SETTLEMENT    DARK FOREST
 index.html        shell + HUD markup/styles
 lib/three.module.js  vendored Three.js (r160)
 src/models.js     character rig + medieval architecture helpers (timber, thatch, logs)
-src/state.js      shared game state, collision helpers
+src/state.js      shared game state, collision helpers (gates pass friendlies)
 src/world.js      terrain, map zones, vegetation, POIs, day/night
-src/entities.js   creature figures, AI, spawning, loot
-src/buildings.js  building defs, placement, settlement tiers
-src/villagers.js  wanderers, recruitment, farmer/guard jobs
-src/player.js     third-person controller, camera, combat
-src/ui.js         HUD updates
-src/main.js       bootstrap, main loop, events, save/load
+src/territory.js  settlement control radius, road buffer, boundary rings
+src/storage.js    player/NPC/settlement inventories, chests, recipes
+src/alerts.js     central village alert system (calm/suspicious/attack/recovery)
+src/entities.js   creature AI, faction structure priorities, raids, loot
+src/buildings.js  parent building framework: placement, snapping, fire, repair
+src/villagers.js  villager framework, farmer & guard loops, housing, food
+src/livestock.js  animal pens, chickens/pigs/cows, production
+src/progression.js data-driven settlement stages + Kingdom taxes
+src/player.js     third-person controller, camera, combat, interactions
+src/ui.js         HUD, settlement panel, storage/craft/pen/recruit menus
+src/main.js       bootstrap, main loop, daily events, save/load (v2)
 ```
 
 *Design bible: "Kingdoms of the Cursed — Game Design Bible, Vol. I" by Alejandro Ruiz.*

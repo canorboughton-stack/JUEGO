@@ -3,7 +3,7 @@ import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, resolveCollisions, isNight } from './state.js';
 import { makeCharacter, addSword, pickupLoot } from './entities.js';
 import { buildState, tryPlace } from './buildings.js';
-import { recruit } from './villagers.js';
+import { FOOD_TYPES } from './storage.js';
 
 export class Player {
   constructor() {
@@ -124,20 +124,21 @@ export class Player {
     this.st = this.maxSt;
     this.hunger = Math.max(30, this.hunger);
     // the frontier taxes failure: lose a fifth of carried resources
-    for (const k of ['wood', 'stone', 'food'])
-      G.resources[k] = Math.floor(G.resources[k] * 0.8);
+    for (const k of Object.keys(G.playerInv))
+      G.playerInv[k] = Math.floor(G.playerInv[k] * 0.8);
     this.dead = false;
     G.ui.showDeath(false);
     G.ui.log('You wake by the campfire, lighter of pocket and heavier of heart.');
   }
 
   eat() {
-    if (G.resources.food <= 0) { G.ui.log('No food to eat.'); return; }
+    const food = FOOD_TYPES.find(r => G.playerInv[r] > 0);
+    if (!food) { G.ui.log('No food in your pack — carry meat, corn or cabbage.'); return; }
     if (this.hunger > 92) { G.ui.log('You are not hungry.'); return; }
-    G.resources.food--;
+    G.playerInv[food]--;
     this.hunger = Math.min(this.maxHu, this.hunger + 30);
     this.hp = Math.min(this.maxHp, this.hp + 8);
-    G.ui.log('You eat. (+30 hunger, +8 health)');
+    G.ui.log(`You eat ${food}. (+30 hunger, +8 health)`);
   }
 
   _moveInput() {
@@ -170,7 +171,7 @@ export class Player {
       const rollSpeed = 13;
       let nx = this.pos.x + this.rollDir.x * rollSpeed * dt;
       let nz = this.pos.z + this.rollDir.z * rollSpeed * dt;
-      const s = resolveCollisions(nx, nz, 0.45);
+      const s = resolveCollisions(nx, nz, 0.45, null, true);
       this.pos.x = s.x; this.pos.z = s.z;
       this.mesh.rotation.x = -(0.42 - this.rollTimer) / 0.42 * Math.PI * 2;
     } else {
@@ -179,7 +180,7 @@ export class Player {
         mv.normalize();
         let nx = this.pos.x + mv.x * speed * dt;
         let nz = this.pos.z + mv.z * speed * dt;
-        const s = resolveCollisions(nx, nz, 0.45);
+        const s = resolveCollisions(nx, nz, 0.45, null, true);
         this.pos.x = s.x; this.pos.z = s.z;
         // face movement direction (or camera dir when blocking/attacking)
         const want = Math.atan2(mv.x, mv.z);
@@ -235,28 +236,36 @@ export class Player {
 
   _scanInteract(dt) {
     this.interact = null;
-    // loot bags first
-    let best = null, bd = 3.0;
+    if (G.uiOpen) { G.ui.prompt(''); G.ui.gatherProgress(0); return; }
+    const near = (x, z, r) => dist2d(this.pos.x, this.pos.z, x, z) < r;
+    let best = null;
+
+    const buildingsByDist = G.buildings
+      .map(b => ({ b, d: dist2d(this.pos.x, this.pos.z, b.x, b.z) }))
+      .sort((a, c) => a.d - c.d);
+
+    for (const { b, d } of buildingsByDist) {
+      const reach = Math.max(b.def.r, 1.6) + 2.2;
+      if (d > reach) continue;
+      // priority within a building: fire > unfinished > damaged > function
+      if (b.fire > 0) { best = { kind: 'extinguish', obj: b, label: `beat out the fire on the ${b.def.name}`, hold: true }; break; }
+      if (b.built < 1) { best = { kind: 'construct', obj: b, label: `construct ${b.def.name} (${Math.round(b.built * 100)}%)`, hold: true }; break; }
+      if (b.hp < b.maxHp - 1) { best = { kind: 'repair', obj: b, label: `repair ${b.def.name} (${Math.round(b.hp / b.maxHp * 100)}%)`, hold: true }; break; }
+      if (b.type === 'chest') { best = { kind: 'chest', obj: b, label: 'open Storage Chest' }; break; }
+      if (b.type === 'workbench') { best = { kind: 'craft', obj: b, label: 'use Workbench' }; break; }
+      if (b.type === 'animalpen') { best = { kind: 'pen', obj: b, label: `tend Animal Pen${b.penFood ? ` (collect ${b.penFood} food)` : ''}` }; break; }
+      if (b.type === 'gate') { best = { kind: 'gate', obj: b, label: b.open ? 'close gate' : 'open gate' }; break; }
+      if (b.type === 'farm' && b.cropState === 'empty') { best = { kind: 'crop', obj: b, label: `switch crop (now: ${b.crop})` }; break; }
+    }
+    // loot bags outrank building menus when standing on them
     for (const l of G.loots) {
-      const d = dist2d(this.pos.x, this.pos.z, l.x, l.z);
-      if (d < bd) { bd = d; best = { kind: 'loot', obj: l, label: 'pick up loot' }; }
+      if (near(l.x, l.z, 3.0)) { best = { kind: 'loot', obj: l, label: 'pick up loot' }; break; }
     }
-    // wanderers
+    // wanderers on the road → recruitment menu (brief §7)
     for (const w of G.wanderers) {
-      const d = dist2d(this.pos.x, this.pos.z, w.pos.x, w.pos.z);
-      if (d < 3.4 && (!best || d < bd)) { bd = d; best = { kind: 'recruit', obj: w, label: `recruit ${w.name}` }; }
+      if (near(w.pos.x, w.pos.z, 3.4)) { best = { kind: 'recruit', obj: w, label: `speak with ${w.name}` }; break; }
     }
-    // construction sites: hold E to hammer the frame into a finished building
-    for (const b of G.buildings) {
-      if (b.built >= 1) continue;
-      const d = dist2d(this.pos.x, this.pos.z, b.x, b.z);
-      const reach = Math.max(b.def.r, 2) + 2.4;
-      if (d < reach && (!best || d < bd)) {
-        bd = d;
-        best = { kind: 'construct', obj: b, label: `construct ${b.def.name} (${Math.round(b.built * 100)}%)`, hold: true };
-      }
-    }
-    // resources
+    // natural resources
     if (!best) {
       const r = G.world.nearestResource(this.pos.x, this.pos.z);
       if (r) best = { kind: 'resource', obj: r, label: r.label, hold: true };
@@ -269,19 +278,37 @@ export class Player {
         best.obj.construct(dt);
         holdProgress = best.obj.built;
         this._hammer(dt);
+      } else if (best.kind === 'repair') {
+        const problem = best.obj.repairTick(dt);
+        if (problem && problem !== 'undamaged') { G.ui.prompt(`✗ ${problem}`); G.ui.gatherProgress(0); return; }
+        holdProgress = best.obj.hp / best.obj.maxHp;
+        this._hammer(dt);
+      } else if (best.kind === 'extinguish') {
+        best.obj.extinguishTick(dt);
+        holdProgress = 1 - best.obj.fire;
       } else if (best.hold) {
         this.gatherHold += dt;
         holdProgress = this.gatherHold / 1.4;
         if (this.gatherHold >= 1.4) {
           this.gatherHold = 0;
           G.world.harvest(best.obj.kind, best.obj.i);
-          const gains = { tree: '+5 wood', rock: '+4 stone', bush: '+2 food' };
+          const gains = { tree: '+5 wood', rock: '+4 stone', bush: '+2 cabbage' };
           G.ui.log(`Gathered ${gains[best.obj.kind]}.`);
         }
       } else if (!this._ePressed) {
         this._ePressed = true;
         if (best.kind === 'loot') pickupLoot(best.obj);
-        else if (best.kind === 'recruit') recruit(best.obj);
+        else if (best.kind === 'recruit') G.ui.openRecruitMenu(best.obj);
+        else if (best.kind === 'chest') G.ui.openStoragePanel(best.obj);
+        else if (best.kind === 'craft') G.ui.openCraftPanel(best.obj);
+        else if (best.kind === 'pen') G.ui.openPenPanel(best.obj);
+        else if (best.kind === 'gate') {
+          best.obj.open = !best.obj.open;
+          G.ui.log(best.obj.open ? 'Gate opened — anything can pass.' : 'Gate closed — enemies must break it.');
+        } else if (best.kind === 'crop') {
+          best.obj.crop = best.obj.crop === 'corn' ? 'cabbage' : 'corn';
+          G.ui.log(`Farm plot set to ${best.obj.crop}.`);
+        }
       }
     } else {
       this.gatherHold = 0;
@@ -289,7 +316,7 @@ export class Player {
     if (!G.keys['KeyE']) this._ePressed = false;
 
     G.ui.prompt(best ? `[E] ${best.label}` : '');
-    G.ui.gatherProgress(best && best.hold && G.keys['KeyE'] ? holdProgress : 0);
+    G.ui.gatherProgress(best && best.hold !== undefined && best.hold && G.keys['KeyE'] ? holdProgress : 0);
   }
 
   // rhythmic arm swing while building at a construction site

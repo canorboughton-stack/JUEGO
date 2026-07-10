@@ -1,6 +1,7 @@
 // World: handcrafted map layout, terrain, vegetation, ruins, lighting, day/night.
 import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, isNight } from './state.js';
+import { playerAdd } from './storage.js';
 
 const MAP = 400; // world is MAP x MAP centered at origin
 
@@ -231,17 +232,12 @@ export class World {
     };
     consider(this.trees, 'tree', 'chop tree (+5 wood)');
     consider(this.rocks, 'rock', 'mine rock (+4 stone)');
-    consider(this.bushes, 'bush', 'pick berries (+2 food)');
+    consider(this.bushes, 'bush', 'gather wild cabbage (+2)');
     return best;
   }
 
   harvest(kind, i) {
-    const give = (res, n) => {
-      const total = G.resources.wood + G.resources.stone + G.resources.food;
-      const room = Math.max(0, G.resourceCap - total);
-      G.resources[res] += Math.min(n, room);
-      if (room < n) G.ui.log('Storage is full! Build a storage shed.');
-    };
+    const give = (res, n) => playerAdd(res, n);
     if (kind === 'tree') {
       const t = this.trees[i]; t.alive = false; t.respawn = 100;
       this._hideInstance(this.trunkIM, i); this._hideInstance(this.leafIM, i);
@@ -257,7 +253,7 @@ export class World {
     } else if (kind === 'bush') {
       const b = this.bushes[i]; b.alive = false; b.respawn = 70;
       this._hideInstance(this.bushIM, i);
-      give('food', 2);
+      give('cabbage', 2);
     }
   }
 

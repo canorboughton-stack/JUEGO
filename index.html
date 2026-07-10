@@ -74,6 +74,34 @@
   .bslot .bcost { color:#8f879e; }
   .bslot .bdesc { color:#6e6880; font-size:10px; margin-top:2px; line-height:1.3; }
 
+  /* ---- Alert chip ---- */
+  #alertChip { left:0; right:0; top:38px; text-align:center; margin:0 auto; width:200px;
+    font-size:11px; letter-spacing:3px; border:1px solid #3e9948; color:#3e9948;
+    padding:2px 0; background:#00000066; }
+
+  /* ---- Interactive panel (storage / craft / pen / recruit / settlement) ---- */
+  #panel { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:560px; max-height:74vh; overflow-y:auto; background:#0d0a14f2;
+    border:1px solid #6b5a33; padding:18px 26px; font-size:13px; line-height:1.7;
+    display:none; z-index:42; pointer-events:auto; }
+  #panel h3 { color:#c9b47a; letter-spacing:3px; margin-bottom:4px; text-align:center; }
+  #panel .psub { text-align:center; color:#8f879e; margin-bottom:10px; font-style:italic; }
+  #panel .pdim { color:#79728a; font-size:12px; }
+  #panel .pwarn { color:#c9763c; font-size:12px; margin:6px 0; }
+  #panel table { width:100%; border-collapse:collapse; margin:8px 0; }
+  #panel th { color:#8f879e; font-size:11px; letter-spacing:1px; text-align:left;
+    border-bottom:1px solid #3a3444; padding:2px 6px; }
+  #panel td { padding:3px 6px; border-bottom:1px solid #22203055; }
+  #panel td.num { text-align:right; color:#d8c790; }
+  #panel button { pointer-events:auto; cursor:pointer; border:1px solid #6b5a33;
+    background:#171320; color:#d8c790; padding:3px 10px; font-family:inherit;
+    font-size:12px; margin:2px; }
+  #panel button:hover:not(:disabled) { background:#2a2338; border-color:#c9b47a; }
+  #panel button:disabled { opacity:0.35; cursor:default; }
+  #panel .pbtns { text-align:center; margin-top:10px; }
+  #panel .recipe { border:1px solid #3a344466; padding:8px 12px; margin:6px 0; }
+  #panel .recipe.off { opacity:0.55; }
+
   /* ---- Help ---- */
   #help { right:18px; bottom:18px; font-size:11px; color:#79728a; text-align:right; line-height:1.6;
     text-shadow:0 1px 2px #000; }
@@ -118,8 +146,10 @@
 </div>
 
 <div class="hud" id="dmgVignette"></div>
-<div class="hud" id="settlement">Lone Campfire</div>
+<div class="hud" id="settlement">Wilderness Camp</div>
 <div class="hud" id="dayline">Day 1 &mdash; Dawn</div>
+<div class="hud" id="alertChip">CALM</div>
+<div id="panel"></div>
 <div class="hud" id="resources"></div>
 <div class="hud" id="vitals">
   <div class="bar"><div class="fill" id="hpFill" style="width:100%"></div><span class="lbl">HEALTH</span></div>
@@ -135,7 +165,7 @@
 <div class="hud" id="gatherBar"><div id="gatherFill"></div></div>
 <div class="hud" id="log"></div>
 <div class="hud" id="buildMenu"></div>
-<div class="hud" id="help">B build &middot; E interact &middot; F eat &middot; H help &middot; K save</div>
+<div class="hud" id="help">B build &middot; E interact &middot; Tab settlement &middot; F eat &middot; H help &middot; K save</div>
 <div class="hud" id="helpFull">
   <h3>THE FRONTIER SURVIVAL GUIDE</h3>
   <div><b>W A S D</b> Move &nbsp;&middot;&nbsp; <b>Mouse</b> Camera</div>
@@ -146,12 +176,13 @@
   <div><b>E (hold)</b> Gather / recruit / loot</div>
   <div><b>F</b> Eat food (+hunger, +health)</div>
   <div><b>B</b> Build menu &nbsp;<b>R</b> rotate &nbsp;<b>X</b> demolish</div>
-  <div><b>E (hold) at site</b> Hammer frame into building</div>
+  <div><b>E (hold) at site</b> Hammer: construct / repair / douse fire</div>
+  <div><b>Tab</b> Settlement management panel</div>
   <div><b>K</b> Save game &nbsp;&middot;&nbsp; <b>H</b> close help</div>
-  <div style="margin-top:10px;color:#8f879e;font-style:italic">Houses, guard posts and sheds start as
-  timber frames — pay the materials, then hammer them up. The night belongs to the cursed. Build walls,
-  post torches, recruit wanderers from the King's Road. Ghosts fear the light. The far north belongs
-  to something worse.</div>
+  <div style="margin-top:10px;color:#8f879e;font-style:italic">The campfire claims 60m of territory —
+  build only inside it, never on the King's Road. Deposit resources in Storage Chests; farmers carry
+  their harvest there, villagers eat from it daily. Guards need crafted weapons. Ghosts fear torchlight.
+  The far north belongs to something worse.</div>
 </div>
 
 <script type="module" src="src/main.js"></script>
