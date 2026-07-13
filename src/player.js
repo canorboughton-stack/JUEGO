@@ -30,7 +30,9 @@ export class Player {
     this.gatherHold = 0;
     this.interact = null;
 
-    this.fig = makeCharacter({ tunic: 0x46586e, skin: 0xd8ae84, hair: 0x3a2a18, pants: 0x4a3c2c });
+    // a capable but ordinary person carrying real equipment (art bible §12)
+    this.fig = makeCharacter({ tunic: 0x46586e, skin: 0xd8ae84, hair: 0x3a2a18,
+      pants: 0x4a3c2c, pouch: true, reinforced: true });
     addSword(this.fig.armPivot, 0xb8bec9, 0.95);
     this.mesh = this.fig.group;
     G.scene.add(this.mesh);
@@ -62,7 +64,12 @@ export class Player {
   }
 
   attack() {
-    if (this.atkTimer > 0 || this.st < 12 || this.rollTimer > 0) return;
+    // responsiveness (animation bible §17): one queued attack is allowed
+    if (this.atkTimer > 0) {
+      if (this.atkTimer < 0.3) this.queuedAttack = true;
+      return;
+    }
+    if (this.st < 12 || this.rollTimer > 0) return;
     this.atkTimer = 0.55;
     this.atkAnim = 0.35;
     this.st -= 12;
@@ -88,14 +95,15 @@ export class Player {
     }, 140);
   }
 
+  // dodge (animation bible §13): a short directional sidestep with i-frames —
+  // feet stay grounded, made for repositioning. NOT a long souls roll.
   roll() {
-    if (this.rollTimer > 0 || this.st < 20) return;
-    this.st -= 20;
-    this.rollTimer = 0.42;
-    // roll in movement direction, else camera forward
+    if (this.rollTimer > 0 || this.st < 15) return;
+    this.st -= 15;
+    this.rollTimer = 0.28;
     const mv = this._moveInput();
     if (mv.lengthSq() > 0.01) this.rollDir.copy(mv).normalize();
-    else this.rollDir.copy(this.viewDir);
+    else this.rollDir.copy(this.viewDir).negate(); // neutral dodge = step back
   }
 
   takeDamage(n, from) {
@@ -123,8 +131,9 @@ export class Player {
     this.hp = this.maxHp * 0.6;
     this.st = this.maxSt;
     this.hunger = Math.max(30, this.hunger);
-    // the frontier taxes failure: lose a fifth of carried resources
-    for (const k of Object.keys(G.playerInv))
+    // the frontier taxes failure: lose a fifth of carried RESOURCES —
+    // your sword stays on your belt (equipment is never lost)
+    for (const k of FOOD_TYPES.concat(['wood', 'stone', 'hide', 'incense']))
       G.playerInv[k] = Math.floor(G.playerInv[k] * 0.8);
     this.dead = false;
     G.ui.showDeath(false);
@@ -168,14 +177,16 @@ export class Player {
 
     if (this.rollTimer > 0) {
       this.rollTimer -= dt;
-      const rollSpeed = 13;
-      let nx = this.pos.x + this.rollDir.x * rollSpeed * dt;
-      let nz = this.pos.z + this.rollDir.z * rollSpeed * dt;
+      const stepSpeed = 11.5;
+      let nx = this.pos.x + this.rollDir.x * stepSpeed * dt;
+      let nz = this.pos.z + this.rollDir.z * stepSpeed * dt;
       const s = resolveCollisions(nx, nz, 0.45, null, true);
       this.pos.x = s.x; this.pos.z = s.z;
-      this.mesh.rotation.x = -(0.42 - this.rollTimer) / 0.42 * Math.PI * 2;
+      // grounded evasive step: a quick body lean, not a somersault
+      this.mesh.rotation.x = -Math.sin((0.28 - this.rollTimer) / 0.28 * Math.PI) * 0.35;
     } else {
       this.mesh.rotation.x = 0;
+      if (this.queuedAttack && this.atkTimer <= 0) { this.queuedAttack = false; this.attack(); }
       if (mv.lengthSq() > 0.01) {
         mv.normalize();
         let nx = this.pos.x + mv.x * speed * dt;
@@ -273,6 +284,10 @@ export class Player {
         break;
       }
     }
+    // the merchant carriage, halted on the road
+    if (G.merchant && !G.merchant.gone && G.merchant.state === 'trading' &&
+        near(G.merchant.pos.x, G.merchant.pos.z, 4.5))
+      best = { kind: 'trade', obj: G.merchant, label: 'trade with the merchant' };
     // natural resources
     if (!best) {
       const r = G.world.nearestResource(this.pos.x, this.pos.z);
@@ -308,6 +323,7 @@ export class Player {
         if (best.kind === 'loot') pickupLoot(best.obj);
         else if (best.kind === 'recruit') G.ui.openRecruitMenu(best.obj);
         else if (best.kind === 'talk') G.ui.openVillagerPanel(best.obj);
+        else if (best.kind === 'trade') G.ui.openTradePanel();
         else if (best.kind === 'chest') G.ui.openStoragePanel(best.obj);
         else if (best.kind === 'craft') G.ui.openCraftPanel(best.obj);
         else if (best.kind === 'pen') G.ui.openPenPanel(best.obj);

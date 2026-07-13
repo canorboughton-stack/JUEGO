@@ -37,6 +37,8 @@ export const G = {
   memories: [],   // {kind: 'attack'|'raid'|'death'|'taxes'|'ghost', day}
   graves: [],     // {x, z, name, mesh}
   groups: [],     // Group instances (group leader system)
+  merchant: null, // the traveling merchant carriage, when on the road
+  incenseWard: false, // incense burned at dusk keeps ghosts off the settlement
 };
 
 // Record a notable event; villagers bark about recent memories during downtime.

@@ -18,7 +18,9 @@ import { emptyInv } from './storage.js';
 import { updateAlerts, alertState } from './alerts.js';
 import { updateAnimals, dailyAnimalProduce, Animal, ANIMAL_DEFS } from './livestock.js';
 import { evaluateStage, collectTaxes } from './progression.js';
-import { Group, updateGroups, issueCommand } from './groups.js';
+import { Group, updateGroups } from './groups.js';
+import { maybeSpawnMerchant, updateMerchant } from './merchant.js';
+import { settlementWithdraw } from './storage.js';
 
 const SAVE_KEY = 'kotc-save-v3';
 
@@ -204,9 +206,13 @@ function worldEvents(dt) {
   if (night && !lastNight) {
     nightSpawns();
     G.ui.log('Night falls. The cursed things stir...');
+    // burn incense from storage: the smoke keeps ghosts off the settlement
+    G.incenseWard = settlementWithdraw('incense', 1) === 1;
+    if (G.incenseWard) G.ui.log('🕯 Incense smoke drifts over the village — the dead will keep their distance tonight.');
     if (G.day >= 2 && G.day % 3 === 0) banditRaid();
   } else if (!night && lastNight) {
     dawnRespawns();
+    G.incenseWard = false;
     G.ui.log(`Dawn of day ${G.day}.`);
     consumeDailyFood();       // brief §13: one ration per villager per day
     dailyAnimalProduce();     // brief §14: eggs & milk gather at the pen
@@ -214,6 +220,9 @@ function worldEvents(dt) {
     if (Math.random() < 0.9) spawnWanderer();
   }
   lastNight = night;
+
+  // the merchant carriage arrives around midday from Village stage on
+  if (!night && G.time > 0.45 && G.time < 0.55) maybeSpawnMerchant();
 
   wandererTimer -= dt;
   if (wandererTimer <= 0) {
@@ -262,6 +271,7 @@ function tick() {
     updateBuildMode();
     updateAlerts(dt);
     updateGroups(dt);
+    updateMerchant(dt);
     worldEvents(dt);
     G.ui.update(dt, zoneAt(G.player.pos.x, G.player.pos.z));
   }

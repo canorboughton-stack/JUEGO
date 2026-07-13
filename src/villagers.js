@@ -6,8 +6,8 @@ import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, resolveCollisions, isNight, recordMemory, recentMemories } from './state.js';
 import { makeCharacter, addSword } from './entities.js';
 import { POI } from './world.js';
-import { emptyInv, invTotal, nearestChestWithSpace, chestSpace, settlementEatFood,
-         combinedCount, payCombined } from './storage.js';
+import { emptyInv, invTotal, nearestChestWithSpace, nearestChestWithStock, chestSpace,
+         settlementEatFood, combinedCount, payCombined } from './storage.js';
 import { alertState, raiseAlert } from './alerts.js';
 import { CROPS } from './buildings.js';
 import { onVillagerDeath } from './groups.js';
@@ -231,12 +231,17 @@ export class Villager {
     if (!this.tunic) this.tunic = pick(TUNICS);
     const sil = { heightScale: this.heightScale, buildScale: this.buildScale };
     if (this.role === 'guard') {
-      this.fig = makeCharacter({ tunic: 0x4a5568, skin: 0xc9a07a, hat: 'helm', pants: 0x3a3f4a, ...sil });
+      // padded jacket, leather reinforcement, practical helmet — no parade armor
+      this.fig = makeCharacter({ tunic: 0x4a5568, skin: 0xc9a07a, hat: 'helm',
+        pants: 0x3a3f4a, reinforced: true, pouch: true, ...sil });
       if (this.weapon !== 'bow') addSword(this.fig.armPivot, 0x8a909c, 0.7);
     } else if (this.role === 'farmer') {
-      this.fig = makeCharacter({ tunic: 0x7a6a3a, skin: 0xc9a07a, hat: 'straw', hair: this.hair, ...sil });
+      // work apron, rolled-sleeve look, straw hat, utility pouch
+      this.fig = makeCharacter({ tunic: 0x7a6a3a, skin: 0xc9a07a, hat: 'straw',
+        hair: this.hair, apron: true, pouch: true, ...sil });
     } else {
-      this.fig = makeCharacter({ tunic: this.tunic, skin: 0xc9a07a, hair: this.hair, ...sil });
+      this.fig = makeCharacter({ tunic: this.tunic, skin: 0xc9a07a, hair: this.hair,
+        pouch: Math.random() < 0.5, ...sil });
     }
     this.mesh = this.fig.group;
     this.mesh.position.copy(this.pos);
@@ -379,6 +384,10 @@ export class Villager {
     this.mesh.position.copy(this.pos);
     const sw = Math.sin(this.walkPhase) * 0.5;
     this.fig.legs.forEach((l, i) => { l.rotation.x = sw * (i % 2 ? 1 : -1); });
+    // idle breathing: villagers appear to live rather than freeze between loops
+    if (this._baseScaleY === undefined) this._baseScaleY = this.mesh.scale.y;
+    this.mesh.scale.y = this._baseScaleY *
+      (1 + Math.sin(performance.now() * 0.0016 + this.id * 2.1) * 0.008);
   }
 
   // ---------- group/follower behavior (brief §11-§14) ----------
@@ -673,6 +682,23 @@ export class Villager {
     }
     if (invTotal(this.carry) > 0) { if (this._deliver(dt)) return; }
 
+    // visible task chain (brief §4): before planting, fetch a seed unit from
+    // storage when the settlement has stock — otherwise forage wild seed
+    if (farm.cropState === 'empty' && !this.hasSeed) {
+      const seedChest = nearestChestWithStock(this.pos.x, this.pos.z, farm.crop);
+      if (seedChest) {
+        this.state = 'Carrying';
+        const there = this._moveToward(seedChest.x, seedChest.z, dt, 3.4 * this.eff()) ||
+          dist2d(this.pos.x, this.pos.z, seedChest.x, seedChest.z) < 1.6;
+        if (there && seedChest.store[farm.crop] > 0) {
+          seedChest.store[farm.crop]--;
+          this.hasSeed = true;
+        }
+        return;
+      }
+      this.hasSeed = true;
+    }
+
     const nearFarm = dist2d(this.pos.x, this.pos.z, farm.x, farm.z) < 2.4;
     if (!nearFarm) {
       this.state = 'Walking';
@@ -689,6 +715,7 @@ export class Villager {
       this.taskTimer += dt * this.eff();
       if (this.taskTimer > 2.5) {
         this.taskTimer = 0;
+        this.hasSeed = false;
         farm.cropState = 'planted'; farm.growth = 0;
         G.ui.log(`${this.name} planted ${cd.name.toLowerCase()}.`);
       }

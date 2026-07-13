@@ -30,7 +30,7 @@ screen to lock the mouse.
 | `W A S D` | Move (camera-relative) |
 | Mouse | Camera |
 | `Shift` | Sprint (drains stamina) |
-| `Space` | Dodge roll (i-frames) |
+| `Space` | Dodge step (short sidestep, i-frames) |
 | Left mouse | Attack / place building |
 | Right mouse (hold) | Block |
 | `E` (hold) | Gather / recruit / loot |
@@ -55,13 +55,16 @@ screen to lock the mouse.
    weapon). Farmers plant corn/cabbage, harvest, and physically carry crops to storage.
    Guards patrol 25m around their post and never chase past 45m.
 5. Survive the night. Ghouls wake in the **Cursed Ruins**, ghosts drift through walls
-   (torchlight burns them), wolves hunt your livestock — and every third night,
-   **bandits raid** to loot your chests and torch your buildings.
+   (torchlight burns them — and if your storage holds **incense**, one stick burns at
+   dusk and wards the whole settlement), wolves hunt your livestock — and every third
+   night, **bandits raid** to loot your chests and torch your buildings.
 6. React: the **village alert** escalates Calm → Suspicious → Under Attack → Recovery.
    Farmers flee to their shacks; guards respond by priority (villagers > livestock >
    gate > walls). Repair damage with the hammer; beat out fires before they spread.
 7. Grow through data-driven stages: *Camp → Homestead → Village → Fortified
-   Settlement* — and from Village on, the Kingdom collects its food levy every 3 days.
+   Settlement* — from Village on, the Kingdom collects its food levy every 3 days and
+   a **merchant carriage** halts on the King's Road at midday: barter hides and
+   incense for seed corn, timber, stone, or second-hand weapons (`E` at the cart).
 
 Press **Tab** for the settlement management panel: population, beds, food, alert level,
 villager states and problems, farm states, warnings, taxes, defense, and **groups**.
@@ -138,6 +141,7 @@ src/buildings.js  parent building framework: placement, snapping, fire, repair
 src/villagers.js  villager framework, farmer & guard loops, housing, food
 src/livestock.js  animal pens, chickens/pigs/cows, production
 src/progression.js data-driven settlement stages + Kingdom taxes
+src/merchant.js   the merchant carriage: road travel, halt, barter trades
 src/player.js     third-person controller, camera, combat, interactions
 src/ui.js         HUD, settlement panel, storage/craft/pen/recruit menus
 src/main.js       bootstrap, main loop, daily events, save/load (v2)

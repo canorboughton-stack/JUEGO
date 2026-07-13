@@ -56,6 +56,16 @@ export function nearestChestWithSpace(x, z, need = 1) {
   return best;
 }
 
+export function nearestChestWithStock(x, z, res) {
+  let best = null, bd = Infinity;
+  for (const c of chests()) {
+    if ((c.store[res] || 0) <= 0) continue;
+    const d = dist2d(x, z, c.x, c.z);
+    if (d < bd) { bd = d; best = c; }
+  }
+  return best;
+}
+
 export function settlementCount(res) {
   return chests().reduce((t, c) => t + (c.store[res] || 0), 0);
 }

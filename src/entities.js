@@ -4,8 +4,9 @@
 import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, isNight, resolveCollisions, blockingBuilding, recordMemory } from './state.js';
 import { POI } from './world.js';
-import { makeCharacter, bx, cyl } from './models.js';
+import { makeCharacter, makeWerewolf, bx, cyl } from './models.js';
 import { playerAdd } from './storage.js';
+import { inTerritory } from './territory.js';
 
 // ---------- low-poly figure builders ----------
 export function makeBeast(len, hgt, wid, bodyC, headC) {
@@ -40,14 +41,42 @@ export function addSword(armPivot, color = 0x9aa0ad, len = 0.9) {
   return blade;
 }
 
+// Ghost (art bible §9): a FRAGMENTED human shape — incomplete face, cloth moving
+// without wind, no legs, one drifting limb fragment. Not a floating bedsheet.
 function makeGhost() {
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xcfe4ff, transparent: true, opacity: 0.55, emissive: 0x223355 });
-  const body = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.8, 7), mat);
-  body.position.y = 0.9; body.rotation.x = Math.PI; g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 6), mat);
-  head.position.y = 1.85; g.add(head);
-  const light = new THREE.PointLight(0x88aaff, 3, 9);
+  const mat = new THREE.MeshLambertMaterial({ color: 0xc4d6e8, transparent: true,
+    opacity: 0.42, emissive: 0x1a2436 });
+  const dim = new THREE.MeshLambertMaterial({ color: 0x8fa2b8, transparent: true,
+    opacity: 0.3, emissive: 0x101822 });
+  // partial torso and one shoulder — the other side simply isn't there
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.3), mat);
+  torso.position.set(0.06, 1.5, 0); torso.rotation.z = 0.12; g.add(torso);
+  const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.2, 0.28), mat);
+  shoulder.position.set(-0.3, 1.78, 0); g.add(shoulder);
+  // hanging grave-cloth strips of uneven length, moving without wind
+  for (let i = 0; i < 5; i++) {
+    const s = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.5 + (i % 3) * 0.3, 0.06), dim);
+    s.position.set(-0.22 + i * 0.12, 0.85 - (i % 3) * 0.12, (i % 2) * 0.08 - 0.04);
+    s.rotation.z = (i - 2) * 0.12;
+    g.add(s);
+  }
+  // a single detached forearm drifting apart from the body
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.42, 0.14), dim);
+  arm.position.set(0.52, 1.25, 0.12); arm.rotation.z = -0.5; g.add(arm);
+  // cowled head with an incomplete face: half is pale mask, half is void
+  const head = new THREE.Group();
+  head.position.set(0, 2.0, 0.02);
+  const cowl = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.42, 0.36), mat);
+  head.add(cowl);
+  const mask = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 0.04),
+    new THREE.MeshLambertMaterial({ color: 0xe8eef6, transparent: true, opacity: 0.6 }));
+  mask.position.set(-0.09, -0.02, 0.18); head.add(mask);
+  const voidHalf = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.3, 0.04),
+    new THREE.MeshBasicMaterial({ color: 0x05060a }));
+  voidHalf.position.set(0.09, -0.02, 0.18); head.add(voidHalf);
+  g.add(head);
+  const light = new THREE.PointLight(0x6f8cb8, 2.5, 8);
   light.position.y = 1.6; g.add(light);
   return { group: g, legs: [], head };
 }
@@ -56,42 +85,79 @@ function makeGhost() {
 export const CREATURE_DEFS = {
   boar:     { hp: 60,  dmg: 16, speed: 6.5, aggro: 11, atkR: 1.8, cd: 1.5, r: 0.7,
               loot: { meat: 3, hide: 1 },
-              make: () => makeBeast(1.5, 1.0, 0.8, 0x5c4028, 0x4a3220), name: 'Boar' },
+              make: () => {
+                const b = makeBeast(1.5, 1.0, 0.8, 0x5c4028, 0x4a3220);
+                const bone = new THREE.MeshLambertMaterial({ color: 0xd8cfb8 });
+                for (const sx of [-1, 1]) {  // tusks
+                  const t = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.24, 4), bone);
+                  t.position.set(sx * 0.16, -0.1, 0.14); t.rotation.x = -0.7;
+                  b.head.add(t);
+                }
+                bx(b.group, 0.14, 0.14, 1.2, new THREE.MeshLambertMaterial({ color: 0x3a2a18 }),
+                  0, 1.02, 0);   // bristle ridge along the spine
+                bx(b.group, 0.05, 0.3, 0.5, new THREE.MeshLambertMaterial({ color: 0x44301c }),
+                  0.41, 0.7, 0.2); // old torn-hide scar on the flank
+                return b;
+              }, name: 'Boar' },
   wolf:     { hp: 45,  dmg: 12, speed: 8,   aggro: 26, atkR: 1.9, cd: 1.1, r: 0.55,
               loot: { meat: 1, hide: 1 }, prefs: ['livestock', 'villager', 'player'],
-              make: () => makeBeast(1.4, 0.95, 0.55, 0x6e6e78, 0x5a5a63), name: 'Wolf' },
+              make: () => {
+                const b = makeBeast(1.5, 0.9, 0.45, 0x6e6e78, 0x5a5a63); // lean, hungry
+                const fur = new THREE.MeshLambertMaterial({ color: 0x5a5a63 });
+                for (const sx of [-1, 1]) {  // ears
+                  const e = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 4), fur);
+                  e.position.set(sx * 0.12, 0.24, -0.05); b.head.add(e);
+                }
+                bx(b.group, 0.1, 0.1, 0.6, fur, 0, 0.75, 0.85).rotation.x = 0.5; // tail
+                return b;
+              }, name: 'Wolf' },
   blackdog: { hp: 35,  dmg: 15, speed: 9.5, aggro: 32, atkR: 1.9, cd: 0.9, r: 0.5, nocturnal: 'vanish',
               loot: { hide: 1 }, prefs: ['livestock', 'villager', 'player'],
-              make: () => makeBeast(1.3, 0.9, 0.5, 0x14141a, 0x0c0c10), name: 'Black Dog' },
+              make: () => {
+                const b = makeBeast(1.3, 0.95, 0.55, 0x14141a, 0x0c0c10); // broader chest
+                bx(b.group, 0.62, 0.45, 0.45, new THREE.MeshLambertMaterial({ color: 0x14141a }),
+                  0, 0.72, -0.45);  // heavy chest mass
+                const eye = new THREE.MeshBasicMaterial({ color: 0x8a2222 }); // slightly unnatural
+                for (const sx of [-1, 1]) {
+                  const e = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), eye);
+                  e.position.set(sx * 0.1, 0.06, -0.22); b.head.add(e);
+                }
+                bx(b.head, 0.04, 0.02, 0.16, new THREE.MeshLambertMaterial({ color: 0x3a3a42 }),
+                  0.06, -0.08, -0.1); // scarred muzzle
+                return b;
+              }, name: 'Black Dog' },
+  // ghouls are dead people changed by the land — clothing remnants, wrong posture
   ghoul:    { hp: 95,  dmg: 18, speed: 3.4, aggro: 20, atkR: 2.0, cd: 1.6, r: 0.6, nocturnal: 'dormant',
               loot: { incense: 1 },
-              make: () => makeCharacter({ tunic: 0x4a5240, skin: 0x76866a, pants: 0x3e4636, boots: 0x76866a }),
+              make: () => makeCharacter({ tunic: 0x4a5240, skin: 0x76866a, pants: 0x3e4636,
+                boots: 0x76866a, stance: 'hunched', buildScale: 0.92 }),
               name: 'Ghoul' },
   rotghoul: { hp: 180, dmg: 26, speed: 2.6, aggro: 18, atkR: 2.2, cd: 2.0, r: 0.75, nocturnal: 'dormant',
               loot: { incense: 2 },
-              make: () => makeCharacter({ tunic: 0x42502e, skin: 0x5c6a44, pants: 0x36422a, boots: 0x5c6a44, scale: 1.35 }),
+              make: () => makeCharacter({ tunic: 0x42502e, skin: 0x5c6a44, pants: 0x36422a,
+                boots: 0x5c6a44, scale: 1.35, stance: 'hunched', buildScale: 1.15 }),
               name: 'Rot Ghoul' },
+  // bandits look assembled from stolen and scavenged gear — no two alike
   bandit:   { hp: 70,  dmg: 14, speed: 6.2, aggro: 19, atkR: 2.1, cd: 1.2, r: 0.55, loot: { wood: 3, stone: 2 },
               make: () => {
-                const h = makeCharacter({ tunic: 0x6b3a2a, skin: 0xc9a07a, hat: 'hood', hatColor: 0x2e2a26 });
+                const tunics = [0x6b3a2a, 0x4a3f36, 0x54452e, 0x3f4a52];
+                const hats = ['hood', 'hood', 'helm', null]; // sometimes a stolen Kingdom helm
+                const h = makeCharacter({
+                  tunic: tunics[Math.floor(Math.random() * tunics.length)],
+                  skin: 0xc9a07a,
+                  hat: hats[Math.floor(Math.random() * hats.length)],
+                  hatColor: 0x2e2a26,
+                  kingdomPatch: Math.random() < 0.4,  // broken heraldry
+                  pouch: true,
+                  heightScale: 0.95 + Math.random() * 0.1,
+                });
                 addSword(h.armPivot, 0x777d88, 0.7); return h;
               }, name: 'Bandit' },
   ghost:    { hp: 50,  dmg: 11, speed: 4.8, aggro: 30, atkR: 2.2, cd: 1.4, r: 0.5, floats: true,
               loot: { incense: 2 }, nocturnal: 'vanish', noCollide: true, make: makeGhost, name: 'Ghost' },
   werewolf: { hp: 650, dmg: 38, speed: 8.5, aggro: 42, atkR: 2.9, cd: 1.5, r: 1.1, boss: true,
               loot: { meat: 10, hide: 5 }, prefs: ['livestock', 'villager', 'player'],
-              make: () => {
-                const b = makeCharacter({ tunic: 0xdfe3ea, skin: 0xc9ced8, pants: 0xcfd4dc, boots: 0xb8bec9, scale: 2.1 });
-                const fur = new THREE.MeshLambertMaterial({ color: 0xc9ced8 });
-                for (const sx of [-1, 1]) {  // ears
-                  const ear = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.28, 4), fur);
-                  ear.position.set(sx * 0.12, 0.52, -0.02); b.head.add(ear);
-                }
-                bx(b.head, 0.16, 0.13, 0.2, fur, 0, 0.13, 0.22);   // snout
-                bx(b.head, 0.05, 0.05, 0.02, new THREE.MeshBasicMaterial({ color: 0xcc2222 }), -0.08, 0.24, 0.16);
-                bx(b.head, 0.05, 0.05, 0.02, new THREE.MeshBasicMaterial({ color: 0xcc2222 }), 0.08, 0.24, 0.16);
-                return b;
-              }, name: 'The White Werewolf' },
+              make: makeWerewolf, name: 'The White Werewolf' },
 };
 
 let nextId = 1;
@@ -121,6 +187,8 @@ export class Creature {
   takeDamage(amount, from) {
     if (this.dead) return;
     this.hp -= amount;
+    this.hitT = 0.18; // directional flinch (animation bible §13: readable hit reactions)
+    this.hitDir = from && from.pos ? Math.sign((from.pos.x - this.pos.x) || 1) : 1;
     // getting hit always draws aggro
     if (from) { this.target = from; this.state = 'chase'; }
     // pack tactics: hurting one wolf angers its pack
@@ -222,6 +290,16 @@ export class Creature {
           this.hp -= dt * 14;
           if (this.hp <= 0) { this.die(); return; }
         }
+      }
+      // burned incense wards the whole settlement: the dead keep their distance
+      if (G.incenseWard && inTerritory(this.pos.x, this.pos.z)) {
+        this.hp -= dt * 6;
+        if (this.hp <= 0) { this.die(); return; }
+        this.target = null;
+        const away = Math.atan2(this.pos.x, this.pos.z); // outward from the village heart
+        this._moveToward(this.pos.x + Math.sin(away) * 10, this.pos.z + Math.cos(away) * 10, dt, d.speed);
+        this._settle(dt);
+        return;
       }
     }
 
@@ -415,6 +493,11 @@ export class Creature {
     const y = G.world.h(this.pos.x, this.pos.z);
     this.pos.y = y + (this.def.floats ? 1.1 + Math.sin(performance.now() * 0.002 + this.id) * 0.3 : 0);
     this.mesh.position.copy(this.pos);
+    // hit flinch: brief lean away from the blow
+    if (this.hitT > 0) {
+      this.hitT -= dt;
+      this.mesh.rotation.z = Math.sin(Math.max(0, this.hitT) / 0.18 * Math.PI) * 0.16 * this.hitDir;
+    } else this.mesh.rotation.z = 0;
     // leg animation
     const sw = Math.sin(this.walkPhase) * 0.5;
     this.fig.legs.forEach((l, i) => { l.rotation.x = sw * (i % 2 ? 1 : -1); });

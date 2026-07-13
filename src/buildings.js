@@ -158,8 +158,8 @@ export const BUILDING_DEFS = {
     },
   },
   wallpiece: {
-    name: 'Wall', key: '8', cost: { wood: 4 }, hp: 180, r: 1.9,
-    desc: 'Modular wall section', modular: true, needsSupport: true,
+    name: 'Timber Wall', key: '8', cost: { wood: 4 }, hp: 180, r: 1.9,
+    desc: 'Modular building wall', modular: true, needsSupport: true,
     make() {
       const g = new THREE.Group();
       bx(g, 3.9, 2.9, 0.22, MAT.plaster, 0, 1.95, 0);

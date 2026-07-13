@@ -12,6 +12,7 @@ import { alertState } from './alerts.js';
 import { stageName } from './progression.js';
 import { createGroup, disbandGroup, issueCommand, makeCompanion, canLead, canJoin,
          defenseInfo, GROUP_PURPOSES, MAX_MEMBERS } from './groups.js';
+import { TRADES, doTrade } from './merchant.js';
 
 const $ = id => document.getElementById(id);
 
@@ -140,6 +141,7 @@ export class UI {
   openPenPanel(pen) { this._openPanel('pen', pen); }
   openRecruitMenu(wanderer) { this._openPanel('recruit', wanderer); }
   openVillagerPanel(v) { this._openPanel('villager', v); }
+  openTradePanel() { this._openPanel('trade', G.merchant); }
   toggleSettlementPanel() {
     if (this.panelMode === 'settlement') this.closePanel();
     else this._openPanel('settlement', null);
@@ -152,7 +154,26 @@ export class UI {
     else if (this.panelMode === 'pen') p.innerHTML = this._penHtml();
     else if (this.panelMode === 'recruit') p.innerHTML = this._recruitHtml();
     else if (this.panelMode === 'villager') p.innerHTML = this._villagerHtml();
+    else if (this.panelMode === 'trade') p.innerHTML = this._tradeHtml();
     else if (this.panelMode === 'settlement') p.innerHTML = this._settlementHtml();
+  }
+
+  _tradeHtml() {
+    const m = this.panelObj;
+    if (!m || m.gone || m.state !== 'trading') { this.closePanel(); return ''; }
+    const fmt = o => Object.entries(o).map(([r, n]) => `${n} ${RES_ICONS[r]} ${r}`).join(' + ');
+    let rows = '';
+    TRADES.forEach((t, i) => {
+      const ok = Object.entries(t.give).every(([r, n]) => (G.playerInv[r] || 0) >= n);
+      rows += `<div class="recipe ${ok ? '' : 'off'}">
+        <b>${fmt(t.give)} → ${fmt(t.get)}</b>
+        <div class="pdim">"${t.note}"</div>
+        <button data-act="trade" data-id="${i}" ${ok ? '' : 'disabled'}>Trade</button></div>`;
+    });
+    return `<h3>THE MERCHANT</h3>
+      <div class="psub">"Goods for goods, friend. Coin means little this far out."</div>
+      <div class="pdim">Trades come from your pack — hides and incense are worth the most.</div>
+      ${rows}<div class="pbtns"><button data-act="close">Done trading [E]</button></div>`;
   }
 
   // talking to a villager: identity, then companionship or leader commands (brief §11, §16)
@@ -427,6 +448,11 @@ export class UI {
     } else if (act === 'gdisband') {
       const g = G.groups.find(x => x.id === +id);
       if (g) disbandGroup(g);
+      this._renderPanel();
+      return;
+    } else if (act === 'trade') {
+      const err = doTrade(+id);
+      if (err) this.log(err);
       this._renderPanel();
       return;
     } else if (act === 'gcreate') {
