@@ -6,10 +6,12 @@ import { BUILDING_DEFS, BUILD_ORDER, buildState, selectSlot, CROPS } from './bui
 import { RESOURCES, ITEMS, RES_ICONS, RECIPES, invTotal, PLAYER_CARRY_CAP, CHEST_CAP,
          chestSpace, settlementFood, settlementCount, canAffordCombined, payCombined,
          playerAdd, costLabel } from './storage.js';
-import { freeBeds, recruitWanderer } from './villagers.js';
+import { freeBeds, recruitWanderer, TRAITS } from './villagers.js';
 import { ANIMAL_DEFS, addAnimal, penAnimals } from './livestock.js';
 import { alertState } from './alerts.js';
 import { stageName } from './progression.js';
+import { createGroup, disbandGroup, issueCommand, makeCompanion, canLead, canJoin,
+         defenseInfo, GROUP_PURPOSES, MAX_MEMBERS } from './groups.js';
 
 const $ = id => document.getElementById(id);
 
@@ -137,6 +139,7 @@ export class UI {
   openCraftPanel(bench) { this._openPanel('craft', bench); }
   openPenPanel(pen) { this._openPanel('pen', pen); }
   openRecruitMenu(wanderer) { this._openPanel('recruit', wanderer); }
+  openVillagerPanel(v) { this._openPanel('villager', v); }
   toggleSettlementPanel() {
     if (this.panelMode === 'settlement') this.closePanel();
     else this._openPanel('settlement', null);
@@ -148,7 +151,45 @@ export class UI {
     else if (this.panelMode === 'craft') p.innerHTML = this._craftHtml();
     else if (this.panelMode === 'pen') p.innerHTML = this._penHtml();
     else if (this.panelMode === 'recruit') p.innerHTML = this._recruitHtml();
+    else if (this.panelMode === 'villager') p.innerHTML = this._villagerHtml();
     else if (this.panelMode === 'settlement') p.innerHTML = this._settlementHtml();
+  }
+
+  // talking to a villager: identity, then companionship or leader commands (brief §11, §16)
+  _villagerHtml() {
+    const v = this.panelObj;
+    if (!v || v.dead) { this.closePanel(); return ''; }
+    const t = TRAITS[v.trait] || {};
+    const id = `<h3>${v.name.toUpperCase()}</h3>
+      <div class="psub">${v.role || 'villager'} · ${v.trait} (${t.blurb || ''}) ·
+        ${Math.round(v.hp)}/${v.maxHp} hp</div>
+      <div class="pdim">Home: ${v.home ? 'housed' : 'homeless'} ·
+        Work: ${v.job ? v.job.def.name : 'none'} · Doing: ${v.state}
+        ${v.problem ? ` — <span class="pwarn">${v.problem}</span>` : ''}
+        ${v.weapon ? ` · armed with ${v.weapon}` : ''}</div>`;
+    let body = '';
+    if (v.group && v.isLeader) {
+      const g = v.group;
+      body = `<div class="psub">Leads <b>${g.name}</b> (${g.everyone().length} strong)
+          — orders: ${g.command ? g.command.type : 'none'}</div>
+        <div class="pbtns">
+        <button data-act="cmd" data-id="follow">Follow Me</button>
+        <button data-act="cmd" data-id="wait">Wait Here</button>
+        <button data-act="cmd" data-id="defend">Defend This Area</button>
+        <button data-act="cmd" data-id="patrol">Patrol Here↔There</button>
+        <button data-act="cmd" data-id="attack">Attack My Target</button>
+        <button data-act="cmd" data-id="retreat">Retreat!</button>
+        <button data-act="cmd" data-id="home">Return Home</button>
+        <button data-act="disband">Disband Group</button></div>`;
+    } else if (v.group) {
+      body = `<div class="psub">Answers to ${v.group.leader.name} (${v.group.name}).</div>
+        <div class="pbtns"><button data-act="ungroup">Release from group</button></div>`;
+    } else {
+      body = `<div class="pbtns">
+        <button data-act="companion">Follow me (companion)</button></div>
+        <div class="pdim">Groups are formed from the Settlement panel [Tab].</div>`;
+    }
+    return `${id}${body}<div class="pbtns"><button data-act="close">Farewell [E]</button></div>`;
   }
 
   _storageHtml() {
@@ -241,10 +282,11 @@ export class UI {
 
     let vrows = '';
     for (const v of alive) {
-      vrows += `<tr><td>${v.name}</td><td>${v.role || 'idle'}</td>
+      vrows += `<tr><td>${v.name}${v.isLeader ? ' ★' : ''}</td>
+        <td>${v.role || 'idle'} · ${v.trait}</td>
         <td class="num">${Math.round(v.hp)}</td>
         <td>${v.home ? 'housed' : '<span class="pwarn">homeless</span>'}</td>
-        <td>${v.state}${v.problem ? ` — <span class="pwarn">${v.problem}</span>` : ''}</td></tr>`;
+        <td>${v.state}${v.group ? ` (${v.group.name})` : ''}${v.problem ? ` — <span class="pwarn">${v.problem}</span>` : ''}</td></tr>`;
     }
     let frows = '';
     for (const b of G.buildings) {
@@ -262,16 +304,44 @@ export class UI {
     if (sites) warns.push(`${sites} construction site(s) await your hammer.`);
     if (!G.taxes.paid) warns.push(`Kingdom levy unpaid (${G.taxes.owed} food owed).`);
 
+    // groups & defense (brief §8, §17)
+    const def = defenseInfo();
+    let grows = '';
+    for (const g of G.groups) {
+      grows += `<tr><td>${g.name}</td><td>${g.purpose}</td>
+        <td>${g.leader.name}</td><td class="num">${g.everyone().length}</td>
+        <td>${g.command ? g.command.type : 'at rest'}</td>
+        <td><button data-act="gdisband" data-id="${g.id}">Disband</button></td></tr>`;
+    }
+    const leaders = alive.filter(v => canLead(v));
+    const joinable = alive.filter(v => canJoin(v));
+    const createForm = leaders.length ? `
+      <div class="recipe"><b>Create Group</b>
+        <div style="margin:4px 0">Purpose:
+          <select id="gpPurpose">${GROUP_PURPOSES.map(p => `<option>${p}</option>`).join('')}</select>
+          Leader: <select id="gpLeader">${leaders.map(v =>
+            `<option value="${v.id}">${v.name} (${v.role || v.trait})</option>`).join('')}</select></div>
+        <div class="pdim">Members (up to ${MAX_MEMBERS}):
+          ${joinable.map(v => `<label style="margin-right:8px"><input type="checkbox"
+            name="gpMember" value="${v.id}"> ${v.name}</label>`).join('') || 'nobody free'}</div>
+        <button data-act="gcreate">Form the group</button></div>`
+      : '<div class="pdim">No eligible leaders — groups need a Guard or a brave villager.</div>';
+
     return `<h3>SETTLEMENT — ${stageName().toUpperCase()}</h3>
       <div class="psub">Alert: <b style="color:${aCol}">${aTxt}</b>
         · Population ${alive.length}/${G.popCap} (beds free: ${freeBeds()})
         · Food ${food} (−${alive.length}/day)
         · Farmers ${farmers} · Guards ${guards}
         ${G.stage >= 2 ? `· Taxes: ${G.taxes.paid ? `next day ${G.taxes.nextDay}` : `<span class="pwarn">OWED ${G.taxes.owed}</span>`}` : ''}</div>
+      <div class="pdim">Defense: ${def.onDuty}/${def.guards} guards on duty
+        ${def.away ? ` (<span class="pwarn">${def.away} away with groups</span>)` : ''}
+        ${def.unmanned ? ` · <span class="pwarn">${def.unmanned} post(s) unmanned</span>` : ''}</div>
       ${warns.length ? `<div class="pwarn">⚠ ${warns.join('<br>⚠ ')}</div>` : '<div class="pdim">All is well on the frontier.</div>'}
       <table><tr><th>Villager</th><th>Role</th><th>HP</th><th>Home</th><th>State</th></tr>
         ${vrows || '<tr><td colspan=5>No villagers yet — recruit travelers on the King\'s Road.</td></tr>'}</table>
       ${frows ? `<table><tr><th>Farm</th><th>Crop state</th><th>Worker</th></tr>${frows}</table>` : ''}
+      ${grows ? `<table><tr><th>Group</th><th>Purpose</th><th>Leader</th><th>Size</th><th>Orders</th><th></th></tr>${grows}</table>` : ''}
+      ${createForm}
       <div class="pbtns"><button data-act="close">Close [Tab]</button></div>`;
   }
 
@@ -317,6 +387,59 @@ export class UI {
       const err = recruitWanderer(c, id);
       if (err) { this.log(err); this._renderPanel(); return; }
       this.closePanel();
+      return;
+    } else if (act === 'cmd') {
+      // orders go to the Leader only (brief §11)
+      const v = this.panelObj, g = v.group, P = G.player.pos;
+      if (id === 'follow') issueCommand(g, 'follow');
+      else if (id === 'wait') issueCommand(g, 'wait', { x: v.pos.x, z: v.pos.z });
+      else if (id === 'defend') issueCommand(g, 'defend', { x: P.x, z: P.z });
+      else if (id === 'patrol') issueCommand(g, 'patrol',
+        { points: [{ x: v.pos.x, z: v.pos.z }, { x: P.x, z: P.z }], pointIdx: 0 });
+      else if (id === 'attack') {
+        let best = null, bd = 30;
+        for (const cr of G.creatures) {
+          if (cr.dead) continue;
+          const d = dist2d(P.x, P.z, cr.pos.x, cr.pos.z);
+          if (d < bd) { bd = d; best = cr; }
+        }
+        if (best) issueCommand(g, 'attack', { target: best });
+        else this.log('No target in sight.');
+      } else if (id === 'retreat') issueCommand(g, 'retreat');
+      else if (id === 'home') issueCommand(g, 'home');
+      this.closePanel();
+      return;
+    } else if (act === 'disband') {
+      disbandGroup(this.panelObj.group);
+      this.closePanel();
+      return;
+    } else if (act === 'ungroup') {
+      const v = this.panelObj, g = v.group;
+      const i = g.members.indexOf(v);
+      if (i >= 0) { g.members.splice(i, 1); v.group = null; }
+      this._renderPanel();
+      return;
+    } else if (act === 'companion') {
+      const err = makeCompanion(this.panelObj);
+      if (err) this.log(err);
+      this.closePanel();
+      return;
+    } else if (act === 'gdisband') {
+      const g = G.groups.find(x => x.id === +id);
+      if (g) disbandGroup(g);
+      this._renderPanel();
+      return;
+    } else if (act === 'gcreate') {
+      const purpose = document.getElementById('gpPurpose').value;
+      const leader = G.villagers.find(v => v.id === +document.getElementById('gpLeader').value);
+      const members = [...document.querySelectorAll('input[name=gpMember]:checked')]
+        .map(cb => G.villagers.find(v => v.id === +cb.value))
+        .filter(v => v && v !== leader)
+        .slice(0, MAX_MEMBERS);
+      const name = `${purpose} Group ${G.groups.length + 1}`;
+      const err = createGroup(name, purpose, leader, members);
+      if (err) this.log(err);
+      this._renderPanel();
       return;
     }
     this._renderPanel();
@@ -377,9 +500,10 @@ export class UI {
     if (this.panelMode) {
       this.panelRefresh -= dt;
       if (this.panelRefresh <= 0) {
-        this.panelRefresh = this.panelMode === 'settlement' ? 0.5 : 1.0;
-        // don't re-render while hovering a button mid-click
-        if (!this.els.panel.matches(':active')) this._renderPanel();
+        this.panelRefresh = this.panelMode === 'settlement' ? 0.8 : 1.0;
+        // don't re-render while the mouse is over the panel (forms hold state)
+        if (!this.els.panel.matches(':active') && !this.els.panel.matches(':hover'))
+          this._renderPanel();
       }
     }
   }

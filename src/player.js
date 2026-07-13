@@ -265,6 +265,14 @@ export class Player {
     for (const w of G.wanderers) {
       if (near(w.pos.x, w.pos.z, 3.4)) { best = { kind: 'recruit', obj: w, label: `speak with ${w.name}` }; break; }
     }
+    // villagers → conversation panel (companionship, leader commands)
+    for (const v of G.villagers) {
+      if (v.dead || v.inside) continue;
+      if (near(v.pos.x, v.pos.z, 2.8)) {
+        best = { kind: 'talk', obj: v, label: `talk to ${v.name}${v.isLeader ? ' ★' : ''}` };
+        break;
+      }
+    }
     // natural resources
     if (!best) {
       const r = G.world.nearestResource(this.pos.x, this.pos.z);
@@ -299,6 +307,7 @@ export class Player {
         this._ePressed = true;
         if (best.kind === 'loot') pickupLoot(best.obj);
         else if (best.kind === 'recruit') G.ui.openRecruitMenu(best.obj);
+        else if (best.kind === 'talk') G.ui.openVillagerPanel(best.obj);
         else if (best.kind === 'chest') G.ui.openStoragePanel(best.obj);
         else if (best.kind === 'craft') G.ui.openCraftPanel(best.obj);
         else if (best.kind === 'pen') G.ui.openPenPanel(best.obj);

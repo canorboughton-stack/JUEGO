@@ -1,6 +1,6 @@
 // Settlement progression stages (brief §15) — data-driven, evaluated from live
 // settlement conditions rather than scripted quests. Plus the first tax hook.
-import { G } from './state.js';
+import { G, recordMemory } from './state.js';
 import { settlementFood, settlementWithdraw, FOOD_TYPES } from './storage.js';
 
 const has = (type, n = 1) =>
@@ -59,6 +59,7 @@ export function collectTaxes() {
     if (paid >= due) break;
     paid += settlementWithdraw(r, due - paid);
   }
+  recordMemory('taxes');
   if (paid >= due) {
     G.taxes.paid = true; G.taxes.owed = 0;
     G.ui.log(`The Kingdom's tax collector took ${due} food. The ledger is settled.`);

@@ -32,7 +32,23 @@ export const G = {
 
   paused: true,
   keys: {},
+
+  // village memory: recent notable events villagers reference in dialogue
+  memories: [],   // {kind: 'attack'|'raid'|'death'|'taxes'|'ghost', day}
+  graves: [],     // {x, z, name, mesh}
+  groups: [],     // Group instances (group leader system)
 };
+
+// Record a notable event; villagers bark about recent memories during downtime.
+export function recordMemory(kind) {
+  G.memories.push({ kind, day: G.day });
+  while (G.memories.length > 8) G.memories.shift();
+}
+
+// Memories fade: only the last few days feel raw.
+export function recentMemories(maxAgeDays = 3) {
+  return G.memories.filter(m => G.day - m.day <= maxAgeDays);
+}
 
 export function isNight() {
   return G.time < 0.22 || G.time > 0.78;

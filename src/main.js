@@ -12,14 +12,15 @@ import { placeBuilding, updateBuildings, buildState, enterBuildMode, exitBuildMo
          selectSlot, demolishNearest, rotateGhost, BUILD_ORDER, BUILDING_DEFS,
          applyBuildingEffects, updateBuildMode } from './buildings.js';
 import { spawnWanderer, updateWanderers, updateVillagers, assignJobs, Villager,
-         consumeDailyFood } from './villagers.js';
+         consumeDailyFood, addGrave } from './villagers.js';
 import { UI } from './ui.js';
 import { emptyInv } from './storage.js';
 import { updateAlerts, alertState } from './alerts.js';
 import { updateAnimals, dailyAnimalProduce, Animal, ANIMAL_DEFS } from './livestock.js';
 import { evaluateStage, collectTaxes } from './progression.js';
+import { Group, updateGroups, issueCommand } from './groups.js';
 
-const SAVE_KEY = 'kotc-save-v2';
+const SAVE_KEY = 'kotc-save-v3';
 
 // ---------- renderer / scene ----------
 const canvas = document.getElementById('game');
@@ -104,12 +105,26 @@ function saveGame() {
       villagers: G.villagers.filter(v => !v.dead).map(v => ({
         name: v.name, role: v.role, weapon: v.weapon, hp: v.hp, hungerDays: v.hungerDays,
         x: v.pos.x, z: v.pos.z,
+        trait: v.trait, bravery: v.bravery,
+        heightScale: v.heightScale, buildScale: v.buildScale,
         home: v.home ? bIdx(v.home) : -1,
         job: v.job ? bIdx(v.job) : -1,
       })),
       animals: G.animals.filter(a => !a.dead).map(a => ({
         type: a.type, hp: a.hp, pen: a.pen ? bIdx(a.pen) : -1,
       })),
+      graves: G.graves.map(gr => ({ name: gr.name })),
+      groups: G.groups.map(g => {
+        const alive = G.villagers.filter(v => !v.dead);
+        return {
+          name: g.name, purpose: g.purpose,
+          leader: alive.indexOf(g.leader),
+          members: g.members.filter(m => !m.dead).map(m => alive.indexOf(m)),
+          rally: g.rally,
+          command: g.command ? { type: g.command.type, x: g.command.x, z: g.command.z,
+            points: g.command.points, pointIdx: g.command.pointIdx } : null,
+        };
+      }),
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     G.ui.log('Game saved.');
@@ -140,12 +155,24 @@ function loadGame() {
       const nv = new Villager(v.name, v.x, v.z, v.role);
       nv.weapon = v.weapon || null;
       nv.hp = v.hp; nv.hungerDays = v.hungerDays || 0;
-      if (v.role === 'guard') nv._buildFig();
+      if (v.trait) { nv.trait = v.trait; nv.bravery = v.bravery; }
+      if (v.heightScale) { nv.heightScale = v.heightScale; nv.buildScale = v.buildScale; }
+      nv._buildFig();
       const home = G.buildings[v.home];
       if (home) { nv.home = home; home.residents.push(nv); }
       const job = G.buildings[v.job];
       if (job) { nv.job = job; job.worker = nv; }
       G.villagers.push(nv);
+    }
+    for (const gr of d.graves || []) addGrave(gr.name, false);
+    for (const gd of d.groups || []) {
+      const leader = G.villagers[gd.leader];
+      if (!leader) continue;
+      const members = (gd.members || []).map(i => G.villagers[i]).filter(Boolean);
+      const ng = new Group(gd.name, gd.purpose, leader, members);
+      ng.rally = gd.rally || ng.rally;
+      if (gd.command) ng.command = gd.command;
+      G.groups.push(ng);
     }
     for (const a of d.animals || []) {
       const pen = G.buildings[a.pen];
@@ -234,6 +261,7 @@ function tick() {
     updateLoots(dt);
     updateBuildMode();
     updateAlerts(dt);
+    updateGroups(dt);
     worldEvents(dt);
     G.ui.update(dt, zoneAt(G.player.pos.x, G.player.pos.z));
   }

@@ -1,7 +1,7 @@
 // Central Village Alert System (brief §10).
 // Levels: normal → suspicious → attack → recovery → normal.
 // One system owns the level; villagers/guards/UI read it, events raise it.
-import { G, dist2d } from './state.js';
+import { G, dist2d, recordMemory } from './state.js';
 import { inTerritory, territorySources } from './territory.js';
 
 export const alertState = {
@@ -10,6 +10,8 @@ export const alertState = {
   recoveryTimer: 0,
   damageCount: 0,     // buildings damaged during the current attack
   lastReason: '',
+  suspicionPos: null, // where the trouble was sighted
+  investigatorId: 0,  // ONE guard investigates; the rest hold coverage (brief §6)
 };
 
 const ATTACK_COOLDOWN = 15; // quiet seconds before recovery begins
@@ -23,6 +25,7 @@ export function raiseAlert(level, reason = '') {
   alertState.quietTimer = 0;
   if (level === 'attack') {
     alertState.damageCount = 0;
+    recordMemory('attack');
     G.ui.log(`⚠ THE VILLAGE IS UNDER ATTACK${reason ? ` — ${reason}` : ''}!`);
     G.ui.banner('UNDER ATTACK', reason || 'Defend the settlement!');
   } else if (level === 'suspicious') {
@@ -37,18 +40,37 @@ export function noteBuildingDamage() {
 
 export function updateAlerts(dt) {
   // scan for hostiles relative to territory
-  let hostileInside = false, hostileNear = false, nearWhat = '';
+  let hostileInside = false, hostileNear = false, nearWhat = '', nearPos = null;
   for (const c of G.creatures) {
     if (c.dead) continue;
     if (c.type === 'boar' && !c.target) continue; // grazing boars aren't a threat
-    if (inTerritory(c.pos.x, c.pos.z)) { hostileInside = true; nearWhat = c.def.name; break; }
+    if (inTerritory(c.pos.x, c.pos.z)) {
+      hostileInside = true; nearWhat = c.def.name;
+      nearPos = { x: c.pos.x, z: c.pos.z };
+      break;
+    }
     for (const s of territorySources()) {
-      if (dist2d(c.pos.x, c.pos.z, s.x, s.z) < s.r + 25) { hostileNear = true; nearWhat = c.def.name; }
+      if (dist2d(c.pos.x, c.pos.z, s.x, s.z) < s.r + 25) {
+        hostileNear = true; nearWhat = c.def.name;
+        nearPos = { x: c.pos.x, z: c.pos.z };
+      }
     }
   }
+  if (nearPos) alertState.suspicionPos = nearPos;
 
   if (hostileInside) raiseAlert('attack', `${nearWhat} inside the settlement`);
-  else if (hostileNear && alertState.level === 'normal') raiseAlert('suspicious', `${nearWhat} sighted`);
+  else if (hostileNear && alertState.level === 'normal') {
+    raiseAlert('suspicious', `${nearWhat} sighted`);
+    // pick the investigating guard: nearest on-duty guard to the sighting
+    let best = null, bd = Infinity;
+    for (const v of G.villagers) {
+      if (v.dead || v.role !== 'guard') continue;
+      if (v.group && v.group.command) continue; // away with a group
+      const d = dist2d(v.pos.x, v.pos.z, nearPos.x, nearPos.z);
+      if (d < bd) { bd = d; best = v; }
+    }
+    alertState.investigatorId = best ? best.id : 0;
+  }
 
   if (alertState.level === 'attack') {
     if (!hostileInside && !hostileNear) {
@@ -69,4 +91,5 @@ export function updateAlerts(dt) {
     alertState.recoveryTimer -= dt;
     if (alertState.recoveryTimer <= 0) { alertState.level = 'normal'; G.ui.log('The village returns to work.'); }
   }
+  if (alertState.level === 'normal') { alertState.suspicionPos = null; alertState.investigatorId = 0; }
 }

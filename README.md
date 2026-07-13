@@ -64,7 +64,34 @@ screen to lock the mouse.
    Settlement* — and from Village on, the Kingdom collects its food levy every 3 days.
 
 Press **Tab** for the settlement management panel: population, beds, food, alert level,
-villager states and problems, farm states, warnings, taxes.
+villager states and problems, farm states, warnings, taxes, defense, and **groups**.
+
+## Living villagers & followers
+
+Villagers are individuals, not units. Each has a name, a varied silhouette, and one
+primary **trait** — *brave, cautious, hardworking, sociable, or grim* — that changes
+when they flee, how they work, and what they say. They follow a readable **daily
+schedule**: wake, work, a midday break, more work, an evening gathering at the
+campfire, then home to bed. During downtime they pair up for short conversations and
+**bark about recent events** — an attack, a death, the tax collector, ghosts in the
+fog. Deaths leave an empty bed and a **grave** by the village, and some will stand
+there mourning. When something suspicious stirs, civilians pause and look toward it
+while **one guard investigates** and the rest hold coverage.
+
+**Followers, not an army** (press `E` to talk to any villager):
+- Make one villager your **companion** — they follow you, fight beside you, comment
+  on the road, and go back to their job when dismissed.
+- Form **groups** (Tab → Create Group): one Leader (a guard or a brave villager) and
+  up to five members. You command only the Leader — *Follow Me, Wait Here, Defend This
+  Area, Patrol, Attack My Target, Retreat, Return Home, Disband* — and members follow
+  in loose, organic spacing (no marching formations). They navigate through gates,
+  fight autonomously with pursuit limits, lag behind when wounded without breaking
+  the group, and resume their posts when they get home.
+- If a Leader falls, the bravest survivor takes command; if none can, the group
+  scatters for home. Groups break and run from massed casualties or the terror of
+  the White Werewolf.
+- Taking guards away **matters**: the UI warns which posts go unmanned, and the
+  settlement panel tracks guards on duty vs. away.
 
 The far north belongs to the **White Werewolf**. It hunts the weak, feeds, and
 withdraws — enter the monolith ring at your peril.
@@ -105,6 +132,7 @@ src/world.js      terrain, map zones, vegetation, POIs, day/night
 src/territory.js  settlement control radius, road buffer, boundary rings
 src/storage.js    player/NPC/settlement inventories, chests, recipes
 src/alerts.js     central village alert system (calm/suspicious/attack/recovery)
+src/groups.js     group leader system: groups, commands, morale, succession, defense
 src/entities.js   creature AI, faction structure priorities, raids, loot
 src/buildings.js  parent building framework: placement, snapping, fire, repair
 src/villagers.js  villager framework, farmer & guard loops, housing, food

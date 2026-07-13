@@ -2,7 +2,7 @@
 // Each creature teaches a lesson (bible): boar=spacing, wolf=positioning, black dog=aggression,
 // ghoul=patience, bandit=human tactics, ghost=preparation, white werewolf=respect.
 import * as THREE from '../lib/three.module.js';
-import { G, clamp, dist2d, isNight, resolveCollisions, blockingBuilding } from './state.js';
+import { G, clamp, dist2d, isNight, resolveCollisions, blockingBuilding, recordMemory } from './state.js';
 import { POI } from './world.js';
 import { makeCharacter, bx, cyl } from './models.js';
 import { playerAdd } from './storage.js';
@@ -504,12 +504,15 @@ export function nightSpawns() {
   }
   // ghosts drift from the ruins — more as days pass
   const nGhost = Math.min(3, 1 + Math.floor(G.day / 4));
+  let ghostsRose = false;
   for (let i = 0; i < nGhost; i++) {
     if (Math.random() < 0.6) {
       const a = Math.random() * 6.28;
       spawn('ghost', POI.ruins.x + Math.cos(a) * 25, POI.ruins.z + Math.sin(a) * 25);
+      ghostsRose = true;
     }
   }
+  if (ghostsRose) recordMemory('ghost');
 }
 
 // bandit raid: every 3rd night they march on the settlement
@@ -521,6 +524,7 @@ export function banditRaid() {
     b.state = 'chase';
   }
   G.raidActive = true;
+  recordMemory('raid');
   G.ui.log('⚔ BANDIT RAID! Torchlight approaches from the west road!');
   G.ui.banner('RAID', 'Bandits march on your settlement!');
 }

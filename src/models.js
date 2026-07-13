@@ -116,6 +116,8 @@ export function makeCharacter(opt = {}) {
     tunic = 0x5a6a7c, skin = 0xd8ae84, pants = 0x4a3c2c, boots = 0x3a2e20,
     hat = null,               // 'hood' | 'straw' | 'helm' | null (hair)
     hatColor = 0x3a3f4a, hair = 0x4a3320, scale = 1,
+    // silhouette variation so villagers are recognizable at a distance
+    heightScale = 1, buildScale = 1,
   } = opt;
   const g = new THREE.Group();
   const mTunic = L(tunic), mSkin = L(skin), mPants = L(pants), mBoots = L(boots);
@@ -174,6 +176,6 @@ export function makeCharacter(opt = {}) {
     bx(head, 0.35, 0.13, 0.33, L(hair), 0, 0.4, -0.01);
   }
   g.add(head);
-  g.scale.setScalar(scale);
+  g.scale.set(scale * buildScale, scale * heightScale, scale * buildScale);
   return { group: g, legs, armPivot, armL, head };
 }
