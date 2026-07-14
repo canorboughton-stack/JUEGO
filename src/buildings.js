@@ -40,6 +40,10 @@ export const BUILDING_DEFS = {
       cyl(g, 0.05, 0.06, 1.15, 5, MAT.beam, -0.85, 0.57, 0);
       cyl(g, 0.05, 0.06, 1.15, 5, MAT.beam, 0.85, 0.57, 0);
       cyl(g, 0.04, 0.04, 2.0, 5, MAT.beam, 0, 1.1, 0, 0, Math.PI / 2);
+      // sitting logs and a stump: the evening gathering has somewhere to rest
+      cyl(g, 0.22, 0.22, 1.8, 6, MAT.log, -2.2, 0.22, 1.4, 0, Math.PI / 2);
+      cyl(g, 0.22, 0.22, 1.8, 6, MAT.log, 2.0, 0.22, -1.6, Math.PI / 2, 0);
+      cyl(g, 0.3, 0.36, 0.5, 7, MAT.log, 1.8, 0.25, 1.8);
       const flame = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.85, 6),
         new THREE.MeshBasicMaterial({ color: 0xff7722 }));
       flame.position.y = 0.55; g.add(flame);

@@ -443,7 +443,7 @@ export class UI {
       const rc = RECIPES.find(r => r.id === id);
       if (rc && canAffordCombined(rc.cost)) {
         payCombined(rc.cost);
-        playerAdd(rc.id, 1);
+        playerAdd(rc.id, rc.yield || 1);
         this.log(`Crafted: ${rc.name}.`);
       }
     } else if (act === 'buy') {
@@ -565,8 +565,10 @@ export class UI {
       if ((G.playerInv[r] || 0) > 0 || r === 'wood' || r === 'stone')
         inv += `<span class="res">${RES_ICONS[r]} ${G.playerInv[r] || 0}</span> `;
     }
+    const wpn = G.player.weapon;
     this.els.resources.innerHTML =
       `${inv}<span class="res" style="font-size:12px">${invTotal(G.playerInv)}/${PLAYER_CARRY_CAP}</span><br>` +
+      `<span class="res">${RES_ICONS[wpn] || ''} ${wpn}${wpn === 'bow' ? ` ➶${G.playerInv.arrows || 0}` : ''}</span> ` +
       `<span class="res">🏘 ${settlementFood()} food</span> ` +
       `<span class="res">👥 ${pop}/${G.popCap}</span>`;
 

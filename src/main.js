@@ -61,6 +61,7 @@ document.addEventListener('keydown', e => {
   }
   switch (e.code) {
     case 'KeyB': buildState.active ? exitBuildMode() : enterBuildMode(); break;
+    case 'KeyQ': G.player.cycleWeapon(); break;
     case 'KeyF': G.player.eat(); break;
     case 'KeyH': G.ui.toggleHelp(); break;
     case 'KeyK': saveGame(); break;
@@ -81,7 +82,8 @@ document.addEventListener('keyup', e => { G.keys[e.code] = false; });
 
 // ---------- new game / save / load ----------
 function newGame() {
-  Object.assign(G.playerInv, { wood: 30, stone: 12, cabbage: 6 });
+  // you start with a club and calluses — everything better is earned
+  Object.assign(G.playerInv, { wood: 30, stone: 12, cabbage: 6, club: 1 });
   // the founding campfire — claims the first 60m of territory
   placeBuilding('campfire', 0, 0, 0);
   spawnInitialCreatures();
@@ -97,6 +99,8 @@ function saveGame() {
     const data = {
       day: G.day, time: G.time, stage: G.stage, taxes: G.taxes,
       redMoon: G.redMoon,
+      banditCamp: G.banditCamp,
+      weapon: G.player.weapon,
       tamed: G.tamed.filter(t => !t.dead).map(t => ({
         type: t.type, name: t.name, hp: t.hp, trust: t.trust, role: t.role,
         x: t.pos.x, z: t.pos.z,
@@ -150,6 +154,8 @@ function loadGame() {
     G.day = d.day; G.time = d.time; G.stage = d.stage ?? -1;
     Object.assign(G.taxes, d.taxes || {});
     if (d.redMoon) Object.assign(G.redMoon, d.redMoon);
+    if (d.banditCamp) Object.assign(G.banditCamp, d.banditCamp);
+    if (d.weapon) { G.player.weapon = d.weapon; }
     Object.assign(G.playerInv, d.playerInv || {});
     G.werewolfSlain = !!d.werewolfSlain;
     for (const b of d.buildings) {

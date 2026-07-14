@@ -132,7 +132,7 @@ export function addGrave(name, save = true) {
 
 // guard arrows (watch position ranged attacks)
 const arrows = [];
-function fireArrow(from, to) {
+export function fireArrow(from, to) {
   const geo = new THREE.BufferGeometry().setFromPoints([from.clone(), to.clone()]);
   const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xd8c9a0 }));
   G.scene.add(line);

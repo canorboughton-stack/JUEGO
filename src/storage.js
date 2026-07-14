@@ -8,11 +8,13 @@ import { G, dist2d } from './state.js';
 export const RESOURCES = ['wood', 'stone', 'meat', 'corn', 'cabbage', 'hide',
   'herbs', 'bones', 'monsterpart', 'incense'];
 export const FOOD_TYPES = ['corn', 'cabbage', 'meat']; // eaten cheapest-first
-export const ITEMS = ['sword', 'bow'];                 // crafted equipment
+export const ITEMS = ['club', 'sword', 'bow', 'axe', 'pickaxe', 'knife',
+  'arrows', 'hidearmor'];                              // crafted equipment & tools
 export const RES_ICONS = {
   wood: '🪵', stone: '🪨', meat: '🍖', corn: '🌽', cabbage: '🥬',
   hide: '🟫', herbs: '🌿', bones: '🦴', monsterpart: '🧿', incense: '🕯',
-  sword: '🗡', bow: '🏹',
+  club: '🏏', sword: '🗡', bow: '🏹', axe: '🪓', pickaxe: '⛏', knife: '🔪',
+  arrows: '➶', hidearmor: '🥋',
 };
 
 export const PLAYER_CARRY_CAP = 80;   // total resource units the player can haul
@@ -141,4 +143,14 @@ export const RECIPES = [
     desc: 'Ranged weapon for watch positions' },
   { id: 'incense', name: 'Incense', cost: { herbs: 2 },
     desc: 'Burned at dusk to ward ghosts; needed for binding rituals' },
+  { id: 'axe', name: 'Woodsman\'s Axe', cost: { wood: 3, stone: 2 },
+    desc: 'Chop fast, fell more timber (bare hands are slow)' },
+  { id: 'pickaxe', name: 'Pickaxe', cost: { wood: 2, stone: 3 },
+    desc: 'Break stone properly instead of clawing at it' },
+  { id: 'knife', name: 'Skinning Knife', cost: { wood: 1, stone: 2 },
+    desc: 'Your kills yield extra meat and hide' },
+  { id: 'arrows', name: 'Arrows (x8)', cost: { wood: 2, stone: 1 }, yield: 8,
+    desc: 'Ammunition for your bow' },
+  { id: 'hidearmor', name: 'Hide Armor', cost: { hide: 6 },
+    desc: 'Layered leather: -28% damage taken. Worn, not shiny.' },
 ];

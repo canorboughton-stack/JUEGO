@@ -153,6 +153,17 @@ export const CREATURE_DEFS = {
                 });
                 addSword(h.armPivot, 0x777d88, 0.7); return h;
               }, name: 'Bandit' },
+  // camp sentries with bows — the bandits' answer to your watch positions
+  banditarcher: { hp: 50, dmg: 12, speed: 5.5, aggro: 24, atkR: 16, cd: 1.8, r: 0.5,
+              ranged: true, keepDist: 9, loot: { wood: 2, hide: 1 },
+              make: () => {
+                const h = makeCharacter({ tunic: 0x4a4436, skin: 0xc9a07a, hat: 'hood',
+                  hatColor: 0x33302a, pouch: true, kingdomPatch: Math.random() < 0.3 });
+                const wood = new THREE.MeshLambertMaterial({ color: 0x5a4228 });
+                bx(h.armL, 0.05, 0.5, 0.07, wood, 0, -0.35, 0.2, 0, 0, 0.35);
+                bx(h.armL, 0.05, 0.5, 0.07, wood, 0, -0.72, 0.2, 0, 0, -0.35);
+                return h;
+              }, name: 'Bandit Archer' },
   ghost:    { hp: 50,  dmg: 11, speed: 4.8, aggro: 30, atkR: 2.2, cd: 1.4, r: 0.5, floats: true,
               loot: { incense: 2 }, nocturnal: 'vanish', noCollide: true, make: makeGhost, name: 'Ghost' },
   werewolf: { hp: 650, dmg: 38, speed: 8.5, aggro: 42, atkR: 2.9, cd: 1.5, r: 1.1, boss: true,
@@ -210,7 +221,15 @@ export class Creature {
     this.dead = true;
     G.scene.remove(this.mesh);
     const d = this.def;
-    if (d.loot) dropLoot(this.pos.x, this.pos.z, Object.assign({}, d.loot));
+    if (d.loot) {
+      const items = Object.assign({}, d.loot);
+      // a skinning knife makes every beast kill worth more (earned efficiency)
+      if (items.meat && (G.playerInv.knife || 0) > 0) {
+        items.meat += 1;
+        items.hide = (items.hide || 0) + 1;
+      }
+      dropLoot(this.pos.x, this.pos.z, items);
+    }
     if (d.boss) {
       G.werewolfSlain = true;
       G.ui.log('★ THE WHITE WEREWOLF HAS FALLEN. The wilderness bows to no beast tonight. ★');
@@ -412,7 +431,20 @@ export class Creature {
         const a = Math.atan2(this.pos.z - tp.z, this.pos.x - tp.x) + (this.id % 3 - 1) * 0.7;
         gx = tp.x + Math.cos(a) * 2.5; gz = tp.z + Math.sin(a) * 2.5;
       }
-      if (dd > d.atkR) {
+      if (d.ranged && !this.target.village && dd < d.atkR && dd > 2) {
+        // archers hold distance and loose arrows
+        if (dd < (d.keepDist || 8) - 2) {
+          const away = Math.atan2(this.pos.x - tp.x, this.pos.z - tp.z);
+          this._moveToward(this.pos.x + Math.sin(away) * 4, this.pos.z + Math.cos(away) * 4, dt, d.speed);
+        }
+        this._face(tp.x, tp.z);
+        if (this.atkTimer <= 0) {
+          this.atkTimer = d.cd;
+          this.target.takeDamage(d.dmg, this);
+          fireArrowFX(this.pos.clone().add(new THREE.Vector3(0, 1.4, 0)),
+            new THREE.Vector3(tp.x, this.pos.y + 0.9, tp.z));
+        }
+      } else if (dd > d.atkR) {
         this._moveToward(gx, gz, dt, d.speed * (this.type === 'boar' ? 1.25 : 1)); // boars charge
       } else if (!this.target.village) {
         // in range: attack
@@ -532,6 +564,15 @@ export class Creature {
   }
 }
 
+// hostile arrow visuals (entities can't import villagers' FX — module cycle)
+const hostileArrows = [];
+function fireArrowFX(from, to) {
+  const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
+  const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xa89678 }));
+  G.scene.add(line);
+  hostileArrows.push({ line, ttl: 0.25 });
+}
+
 // ---------- loot ----------
 const lootGeo = new THREE.BoxGeometry(0.55, 0.4, 0.45);
 const lootMat = new THREE.MeshLambertMaterial({ color: 0x8a6a3a });
@@ -587,10 +628,14 @@ export function spawnInitialCreatures() {
     spawn('ghoul', POI.ruins.x + Math.cos(a) * r, POI.ruins.z + Math.sin(a) * r);
   }
   spawn('rotghoul', POI.ruins.x, POI.ruins.z + 6);
-  // bandits at their camp
-  for (let i = 0; i < 4; i++) {
-    const a = i * 1.7;
-    spawn('bandit', POI.banditCamp.x + Math.cos(a) * 6, POI.banditCamp.z + Math.sin(a) * 6);
+  // bandits at their camp: blades in the tents, archers on the edge
+  if (G.day >= (G.banditCamp.clearedUntil || 0)) {
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.7;
+      spawn('bandit', POI.banditCamp.x + Math.cos(a) * 6, POI.banditCamp.z + Math.sin(a) * 6);
+    }
+    spawn('banditarcher', POI.banditCamp.x + 10, POI.banditCamp.z + 4);
+    spawn('banditarcher', POI.banditCamp.x - 9, POI.banditCamp.z - 6);
   }
   // the White Werewolf
   spawn('werewolf', POI.werewolfDen.x, POI.werewolfDen.z);
@@ -623,8 +668,34 @@ export function nightSpawns(mult = 1) {
   if (ghostsRose) recordMemory('ghost');
 }
 
-// bandit raid: every 3rd night they march on the settlement
+// how many bandits still hold the camp?
+export function campBanditsAlive() {
+  return G.creatures.filter(c => !c.dead && !c.raider &&
+    (c.type === 'bandit' || c.type === 'banditarcher') &&
+    dist2d(c.home.x, c.home.z, POI.banditCamp.x, POI.banditCamp.z) < 30).length;
+}
+
+// plunder the stash once the camp is cleared: loot + NO RAIDS until it repopulates
+export function plunderBanditStash() {
+  const haul = { wood: 12, stone: 8, hide: 4, corn: 6 };
+  const parts = [];
+  for (const [k, v] of Object.entries(haul)) {
+    const got = playerAdd(k, v);
+    if (got) parts.push(`+${got} ${k}`);
+  }
+  G.banditCamp.clearedUntil = G.day + 4;
+  G.ui.log(`You plunder the bandit stash: ${parts.join(', ')}.`);
+  G.ui.banner('CAMP CLEARED', 'No raids until the outlaws regroup.');
+  recordMemory('raid');
+}
+
+// bandit raid: every 3rd night they march on the settlement —
+// unless their camp lies cleared and empty
 export function banditRaid() {
+  if (G.day < (G.banditCamp.clearedUntil || 0)) {
+    G.ui.log('The bandit camp lies empty — no raid comes tonight.');
+    return;
+  }
   const n = Math.min(6, 2 + Math.floor(G.day / 3));
   for (let i = 0; i < n; i++) {
     const x = -170 + i * 4, z = POI.roadZ + 6;
@@ -648,8 +719,9 @@ export function dawnRespawns() {
     spawn('boar', -100 + Math.random() * 40, -10 + Math.random() * 30);
     spawn('boar', 70 + Math.random() * 60, -20 + Math.random() * 30);
   }
-  if (count('bandit') < 3 && !G.raidActive) {
-    spawn('bandit', POI.banditCamp.x + 5, POI.banditCamp.z);
+  if (G.day >= (G.banditCamp.clearedUntil || 0) && !G.raidActive) {
+    if (count('bandit') < 3) spawn('bandit', POI.banditCamp.x + 5, POI.banditCamp.z);
+    if (count('banditarcher') < 2) spawn('banditarcher', POI.banditCamp.x - 8, POI.banditCamp.z + 7);
   }
   if (count('ghoul') < 3) {
     const a = Math.random() * 6.28;
@@ -661,6 +733,10 @@ export function dawnRespawns() {
 }
 
 export function updateCreatures(dt) {
+  for (let i = hostileArrows.length - 1; i >= 0; i--) {
+    hostileArrows[i].ttl -= dt;
+    if (hostileArrows[i].ttl <= 0) { G.scene.remove(hostileArrows[i].line); hostileArrows.splice(i, 1); }
+  }
   for (let i = G.creatures.length - 1; i >= 0; i--) {
     const c = G.creatures[i];
     if (c.dead) { G.creatures.splice(i, 1); continue; }

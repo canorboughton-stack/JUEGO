@@ -259,8 +259,9 @@ export class World {
           best = { kind, i, d, label };
       });
     };
-    consider(this.trees, 'tree', 'chop tree (+5 wood)');
-    consider(this.rocks, 'rock', 'mine rock (+4 stone)');
+    const axe = (G.playerInv.axe || 0) > 0, pick = (G.playerInv.pickaxe || 0) > 0;
+    consider(this.trees, 'tree', axe ? 'chop tree (+6 wood)' : 'break branches (+3 wood — slow without an axe)');
+    consider(this.rocks, 'rock', pick ? 'mine rock (+6 stone)' : 'pry loose stone (+2 — slow without a pickaxe)');
     consider(this.bushes, 'bush', 'gather wild cabbage (+2)');
     consider(this.herbs, 'herb', 'pick herbs (+2)');
     return best;
@@ -273,13 +274,13 @@ export class World {
       this._hideInstance(this.trunkIM, i); this._hideInstance(this.leafIM, i);
       const ci = G.colliders.findIndex(c => c.x === t.x && c.z === t.z && !c.owner);
       if (ci >= 0) G.colliders.splice(ci, 1);
-      give('wood', 5);
+      give('wood', (G.playerInv.axe || 0) > 0 ? 6 : 3);
     } else if (kind === 'rock') {
       const r = this.rocks[i]; r.alive = false; r.respawn = 140;
       this._hideInstance(this.rockIM, i);
       const ci = G.colliders.findIndex(c => c.x === r.x && c.z === r.z && !c.owner);
       if (ci >= 0) G.colliders.splice(ci, 1);
-      give('stone', 4);
+      give('stone', (G.playerInv.pickaxe || 0) > 0 ? 6 : 2);
     } else if (kind === 'bush') {
       const b = this.bushes[i]; b.alive = false; b.respawn = 70;
       this._hideInstance(this.bushIM, i);
@@ -339,6 +340,38 @@ export class World {
     this.banditFire = new THREE.PointLight(0xff8833, 8, 20);
     this.banditFire.position.copy(fire.position).add(new THREE.Vector3(0, 1, 0));
     g.add(this.banditFire);
+    // crude spike barricades: the outlaws' defenses, scavenged not built
+    const spikeMat = new THREE.MeshLambertMaterial({ color: 0x4e3a24 });
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.3;
+      const x = cx + Math.cos(a) * 14, z = cz + Math.sin(a) * 14;
+      for (let j = -1; j <= 1; j++) {
+        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.09, 1.6, 5), spikeMat);
+        sp.position.set(x + Math.cos(a + 1.57) * j * 0.7,
+          terrainHeight(x, z) + 0.6, z + Math.sin(a + 1.57) * j * 0.7);
+        sp.rotation.z = (j - 0.5) * 0.5; sp.rotation.x = 0.4;
+        g.add(sp);
+      }
+    }
+    // the loot stash: everything they have stolen, under one tarp
+    const stash = new THREE.Group();
+    const stashMat = new THREE.MeshLambertMaterial({ color: 0x6b4e2e });
+    const mkBox = (w, h, d, x, y, z, ry) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), stashMat);
+      m.position.set(x, y, z); m.rotation.y = ry || 0; m.castShadow = true;
+      stash.add(m);
+    };
+    mkBox(1.0, 0.7, 0.8, 0, 0.35, 0, 0.2);
+    mkBox(0.8, 0.6, 0.7, 0.9, 0.3, 0.4, -0.4);
+    mkBox(0.7, 0.5, 0.6, -0.3, 0.95, 0.1, 0.5);
+    const tarp = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, 1.6),
+      new THREE.MeshLambertMaterial({ color: 0x55503e }));
+    tarp.position.set(0.2, 1.35, 0.2); tarp.rotation.z = 0.12;
+    stash.add(tarp);
+    const sx = cx + 3, sz = cz - 3;
+    stash.position.set(sx, terrainHeight(sx, sz), sz);
+    g.add(stash);
+    POI.banditCamp.stash = { x: sx, z: sz };
     G.scene.add(g);
   }
 

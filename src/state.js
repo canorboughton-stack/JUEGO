@@ -43,6 +43,7 @@ export const G = {
   // the loop engine (core gameplay loop bible)
   tamed: [],      // bound creatures: living companions, not equipment
   redMoon: { nextDay: 5, active: false, count: 0, warned: false },
+  banditCamp: { clearedUntil: 0 }, // day until which the plundered camp stays empty
   overnight: { deaths: [], livestockLost: 0, buildingsLost: 0 }, // for the morning report
 };
 

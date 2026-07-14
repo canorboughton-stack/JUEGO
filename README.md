@@ -91,6 +91,20 @@ ration from storage each dawn, and earns or loses **trust**: neglect makes it
 sullen, then gone. Assign it as **Companion** (hunts at your heel) or **Defender**
 (patrols the village).
 
+**Everything is earned (weapons & tools).** You start with a wooden club and
+calluses. The workbench turns your gathering into capability: an **axe** (chop
+fast, +6 wood instead of a slow +3), a **pickaxe** (proper stone), a **skinning
+knife** (+1 meat/+1 hide on every beast kill), the **iron sword** (nearly double
+the club's bite), a **bow with crafted arrows** as real ammunition (`Q` switches
+weapons; misses waste arrows), and **hide armor** you can see on your back
+(-28% damage). Tools change the numbers; the numbers change your day.
+
+**The Bandit Camp is an objective, not scenery.** Sword-bandits hold the tents
+and **archers** hold the perimeter behind crude spike barricades — the outlaws'
+own twisted mirror of your guard posts. Fight through them and **plunder the
+stash** (bring an empty pack). A cleared camp cannot launch raids until the
+outlaws regroup days later — clear it before a Red Moon and sleep easier.
+
 **The Red Moon.** Announced one full day ahead — villagers mutter, you stockpile,
 repair, craft incense, recall your groups. Then the sky turns crimson: merchants
 flee, spawns multiply, ghosts shrug off torchlight (only incense holds), and the

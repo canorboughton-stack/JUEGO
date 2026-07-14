@@ -5,6 +5,14 @@ import { makeCharacter, addSword, pickupLoot } from './entities.js';
 import { buildState, tryPlace } from './buildings.js';
 import { FOOD_TYPES } from './storage.js';
 import { bindCreature } from './taming.js';
+import { fireArrow } from './villagers.js';
+import { bx } from './models.js';
+import { campBanditsAlive, plunderBanditStash } from './entities.js';
+import { POI } from './world.js';
+
+// weapons are earned, not given (ARK-style): club -> iron sword -> hunting bow
+const WEAPONS = ['club', 'sword', 'bow'];
+const MELEE_DMG = { club: 14, sword: 26 };
 
 export class Player {
   constructor() {
@@ -31,14 +39,55 @@ export class Player {
     this.gatherHold = 0;
     this.interact = null;
 
-    // a capable but ordinary person carrying real equipment (art bible §12)
-    this.fig = makeCharacter({ tunic: 0x46586e, skin: 0xd8ae84, hair: 0x3a2a18,
-      pants: 0x4a3c2c, pouch: true, reinforced: true });
-    addSword(this.fig.armPivot, 0xb8bec9, 0.95);
-    this.mesh = this.fig.group;
-    G.scene.add(this.mesh);
+    this.weapon = 'club';   // an ordinary survivor starts with a club
+    this._fitKey = '';
+    this._refit();
 
     this._bindInput();
+  }
+
+  // rebuild the visible figure to match what the player has earned:
+  // weapon in hand, hide armor on the back — gear you can SEE
+  _refit() {
+    const armored = (G.playerInv && G.playerInv.hidearmor > 0);
+    const key = `${this.weapon}|${armored}`;
+    if (key === this._fitKey && this.mesh) return;
+    this._fitKey = key;
+    const oldRot = this.mesh ? { x: this.mesh.rotation.x, y: this.mesh.rotation.y } : null;
+    if (this.mesh) G.scene.remove(this.mesh);
+    this.fig = makeCharacter({
+      tunic: armored ? 0x6b543a : 0x46586e,   // layered leather over the tunic
+      skin: 0xd8ae84, hair: 0x3a2a18, pants: 0x4a3c2c,
+      pouch: true, reinforced: armored,
+    });
+    if (this.weapon === 'sword') addSword(this.fig.armPivot, 0xb8bec9, 0.95);
+    else if (this.weapon === 'club') {
+      const club = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 0.8, 6),
+        new THREE.MeshLambertMaterial({ color: 0x6b4e2e }));
+      club.position.set(0, -0.85, 0.1);
+      this.fig.armPivot.add(club);
+    } else if (this.weapon === 'bow') {
+      // bow carried in the left hand: two curved limbs and a string
+      const wood = new THREE.MeshLambertMaterial({ color: 0x5a4228 });
+      bx(this.fig.armL, 0.05, 0.55, 0.08, wood, 0, -0.35, 0.22, 0, 0, 0.35);
+      bx(this.fig.armL, 0.05, 0.55, 0.08, wood, 0, -0.75, 0.22, 0, 0, -0.35);
+      bx(this.fig.armL, 0.015, 1.0, 0.015,
+        new THREE.MeshLambertMaterial({ color: 0xd8d0c0 }), 0.08, -0.55, 0.22);
+    }
+    this.mesh = this.fig.group;
+    if (oldRot) { this.mesh.rotation.x = oldRot.x; this.mesh.rotation.y = oldRot.y; }
+    this.mesh.position.copy(this.pos);
+    G.scene.add(this.mesh);
+  }
+
+  // Q cycles through weapons the player actually owns
+  cycleWeapon() {
+    const owned = WEAPONS.filter(w => (G.playerInv[w] || 0) > 0);
+    if (owned.length === 0) return;
+    const i = owned.indexOf(this.weapon);
+    this.weapon = owned[(i + 1) % owned.length];
+    G.ui.log(`You ready the ${this.weapon}${this.weapon === 'bow' ? ` (${G.playerInv.arrows || 0} arrows)` : ''}.`);
+    this._refit();
   }
 
   _bindInput() {
@@ -71,9 +120,11 @@ export class Player {
       return;
     }
     if (this.st < 12 || this.rollTimer > 0) return;
+    if (this.weapon === 'bow') { this._shoot(); return; }
     this.atkTimer = 0.55;
     this.atkAnim = 0.35;
     this.st -= 12;
+    const dmg = MELEE_DMG[this.weapon] || 14;
     // face camera direction when striking
     this.facing = Math.atan2(this.viewDir.x, this.viewDir.z);
     // delayed hit check (windup)
@@ -87,13 +138,42 @@ export class Player {
         if (d < 2.9 + c.def.r) {
           const dot = (dx * fx + dz * fz) / Math.max(0.001, d);
           if (dot > 0.35) {
-            c.takeDamage(26, this);
+            c.takeDamage(dmg, this);
             // knockback
             c.pos.x += (dx / d) * 0.7; c.pos.z += (dz / d) * 0.7;
           }
         }
       }
     }, 140);
+  }
+
+  // the bow: crafted arrows are ammunition — every shot is spent from the pack
+  _shoot() {
+    if ((G.playerInv.arrows || 0) <= 0) { G.ui.log('No arrows — craft them at the Workbench.'); return; }
+    // pick the creature nearest the crosshair line within range
+    let best = null, bestScore = 0.8;
+    for (const c of G.creatures) {
+      if (c.dead) continue;
+      const dx = c.pos.x - this.pos.x, dz = c.pos.z - this.pos.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 28 || d < 1.5) continue;
+      const dot = (dx * this.viewDir.x + dz * this.viewDir.z) / Math.max(0.001, d);
+      if (dot > bestScore) { bestScore = dot; best = c; }
+    }
+    this.atkTimer = 0.9;
+    this.atkAnim = 0.3;
+    this.st -= 8;
+    G.playerInv.arrows--;
+    this.facing = Math.atan2(this.viewDir.x, this.viewDir.z);
+    const from = this.pos.clone().add(new THREE.Vector3(0, 1.5, 0));
+    if (best) {
+      fireArrow(from, best.pos.clone().add(new THREE.Vector3(0, 0.9, 0)));
+      best.takeDamage(16, this);
+    } else {
+      // loose into the dark anyway — arrows miss when nothing is lined up
+      fireArrow(from, from.clone().add(new THREE.Vector3(
+        this.viewDir.x * 22, -0.5, this.viewDir.z * 22)));
+    }
   }
 
   // dodge (animation bible §13): a short directional sidestep with i-frames —
@@ -113,6 +193,7 @@ export class Player {
       n *= 0.28;
       this.st = Math.max(0, this.st - 9);
     }
+    if ((G.playerInv.hidearmor || 0) > 0) n *= 0.72; // layered leather takes the edge off
     this.hp -= n;
     if (this.ritualT > 0) { this.ritualT = 0; G.ui.log('The binding ritual was broken!'); }
     G.ui.damageFlash();
@@ -243,6 +324,9 @@ export class Player {
     // --- interaction scan (E) ---
     this._scanInteract(dt);
 
+    // gear changes (crafted armor, switched weapon) show on the body
+    this._refit();
+
     // --- camera ---
     this._updateCamera();
   }
@@ -290,6 +374,14 @@ export class Player {
     if (G.merchant && !G.merchant.gone && G.merchant.state === 'trading' &&
         near(G.merchant.pos.x, G.merchant.pos.z, 4.5))
       best = { kind: 'trade', obj: G.merchant, label: 'trade with the merchant' };
+    // the bandit stash: loot it once the camp is cleared of sentries
+    const stash = POI.banditCamp.stash;
+    if (stash && G.day >= (G.banditCamp.clearedUntil || 0) && near(stash.x, stash.z, 3.5)) {
+      const left = campBanditsAlive();
+      best = left > 0
+        ? { kind: 'stashguarded', obj: null, label: `the stash is guarded — ${left} bandit(s) still stand` }
+        : { kind: 'stash', obj: null, label: 'plunder the bandit stash' };
+    }
     // a weakened beast can be bound (taming loop: the Binding Ritual)
     for (const c of G.creatures) {
       if (c.dead || !c.weakened) continue;
@@ -344,13 +436,16 @@ export class Player {
           bindCreature(best.obj);
         }
       } else if (best.hold) {
+        // the right tool makes the difference between work and struggle
+        const k = best.obj.kind;
+        const holdTime = k === 'tree' ? ((G.playerInv.axe || 0) > 0 ? 0.9 : 2.0)
+          : k === 'rock' ? ((G.playerInv.pickaxe || 0) > 0 ? 0.9 : 2.2)
+          : 1.2;
         this.gatherHold += dt;
-        holdProgress = this.gatherHold / 1.4;
-        if (this.gatherHold >= 1.4) {
+        holdProgress = this.gatherHold / holdTime;
+        if (this.gatherHold >= holdTime) {
           this.gatherHold = 0;
           G.world.harvest(best.obj.kind, best.obj.i);
-          const gains = { tree: '+5 wood', rock: '+4 stone', bush: '+2 cabbage' };
-          G.ui.log(`Gathered ${gains[best.obj.kind]}.`);
         }
       } else if (!this._ePressed) {
         this._ePressed = true;
@@ -359,6 +454,7 @@ export class Player {
         else if (best.kind === 'talk') G.ui.openVillagerPanel(best.obj);
         else if (best.kind === 'trade') G.ui.openTradePanel();
         else if (best.kind === 'tamed') G.ui.openTamedPanel(best.obj);
+        else if (best.kind === 'stash') plunderBanditStash();
         else if (best.kind === 'chest') G.ui.openStoragePanel(best.obj);
         else if (best.kind === 'craft') G.ui.openCraftPanel(best.obj);
         else if (best.kind === 'pen') G.ui.openPenPanel(best.obj);
