@@ -133,6 +133,8 @@ export class UI {
     this.panelMode = null; this.panelObj = null;
     G.uiOpen = false;
     this.els.panel.style.display = 'none';
+    // closing with E must not instantly re-trigger a nearby interactable
+    if (G.player) G.player._ePressed = true;
     if (!G.paused) G.renderer.domElement.requestPointerLock();
   }
 
@@ -142,6 +144,8 @@ export class UI {
   openRecruitMenu(wanderer) { this._openPanel('recruit', wanderer); }
   openVillagerPanel(v) { this._openPanel('villager', v); }
   openTradePanel() { this._openPanel('trade', G.merchant); }
+  openTamedPanel(t) { this._openPanel('tamed', t); }
+  openMorningReport(rep) { this._openPanel('report', rep); }
   toggleSettlementPanel() {
     if (this.panelMode === 'settlement') this.closePanel();
     else this._openPanel('settlement', null);
@@ -155,7 +159,52 @@ export class UI {
     else if (this.panelMode === 'recruit') p.innerHTML = this._recruitHtml();
     else if (this.panelMode === 'villager') p.innerHTML = this._villagerHtml();
     else if (this.panelMode === 'trade') p.innerHTML = this._tradeHtml();
+    else if (this.panelMode === 'tamed') p.innerHTML = this._tamedHtml();
+    else if (this.panelMode === 'report') p.innerHTML = this._reportHtml();
     else if (this.panelMode === 'settlement') p.innerHTML = this._settlementHtml();
+  }
+
+  // the morning assessment (loop bible): plan the day before leaving the gate
+  _reportHtml() {
+    const r = this.panelObj;
+    if (!r) { this.closePanel(); return ''; }
+    const li = [];
+    li.push(`Food in storage: <b>${r.food}</b> — about <b>${r.foodDays}</b> day(s) for ${r.pop} villager(s)`);
+    if (r.deaths.length) li.push(`<span class="pwarn">Lost in the night: ${r.deaths.join(', ')}</span>`);
+    if (r.livestockLost) li.push(`<span class="pwarn">${r.livestockLost} livestock killed</span>`);
+    if (r.buildingsLost) li.push(`<span class="pwarn">${r.buildingsLost} structure(s) destroyed</span>`);
+    if (r.damaged) li.push(`<span class="pwarn">${r.damaged} structure(s) damaged — hammer them (E)</span>`);
+    if (r.injured) li.push(`${r.injured} villager(s) injured and recovering`);
+    if (r.guardsAway) li.push(`${r.guardsAway} guard(s) away with groups`);
+    if (r.cropsReady) li.push(`${r.cropsReady} farm(s) ready to harvest`);
+    if (r.lowWood) li.push('<span class="pwarn">Wood is running low</span>');
+    if (r.merchant) li.push('The merchant is on the road today');
+    if (r.taxesIn >= 0) li.push(`The Kingdom's levy comes in ${r.taxesIn} day(s)`);
+    if (r.incense === 0) li.push('<span class="pwarn">No incense in storage — the ghosts will come unhindered</span>');
+    if (r.redMoonTonight) li.push('<b style="color:#c0392b">🔴 THE RED MOON RISES TONIGHT. Do not be away from the walls.</b>');
+    else if (r.redMoonTomorrow) li.push('<b style="color:#c9a23c">🌑 The moon is turning — the Red Moon rises TOMORROW night.</b>');
+    return `<h3>DAWN — DAY ${r.day}</h3>
+      <div class="psub">"Can I safely leave the village today?"</div>
+      ${li.map(x => `<div style="margin:3px 0">· ${x}</div>`).join('')}
+      <div class="pbtns"><button data-act="close">Make today's plan [E]</button></div>`;
+  }
+
+  _tamedHtml() {
+    const t = this.panelObj;
+    if (!t || t.dead) { this.closePanel(); return ''; }
+    const trustTxt = t.trust >= 70 ? 'devoted' : t.trust >= 30 ? 'wary but willing' : 'sullen — it refuses commands';
+    return `<h3>${t.name.toUpperCase()} THE ${t.type.toUpperCase()}</h3>
+      <div class="psub">${t.def.blurb}</div>
+      <div class="pdim">Health ${Math.round(t.hp)}/${t.maxHp} · Trust ${Math.round(t.trust)}/100 (${trustTxt})
+        · ${t.fedToday ? 'fed' : '<span class="pwarn">hungry</span>'} · doing: ${t.state || 'resting'}</div>
+      <div class="pdim">It eats 1 meat from storage each dawn. Neglect it and it will leave.</div>
+      <div class="pbtns">
+        <button data-act="trole" data-id="companion" ${t.role === 'companion' ? 'disabled' : ''}>Follow me (Companion)</button>
+        <button data-act="trole" data-id="defender" ${t.role === 'defender' ? 'disabled' : ''}>Guard the village (Defender)</button>
+        <button data-act="trole" data-id="rest" ${t.role === 'rest' ? 'disabled' : ''}>Rest</button>
+        <button data-act="tfeed" ${(G.playerInv.meat || 0) > 0 ? '' : 'disabled'}>Feed from pack (1 meat)</button>
+      </div>
+      <div class="pbtns"><button data-act="close">Leave it be [E]</button></div>`;
   }
 
   _tradeHtml() {
@@ -356,7 +405,11 @@ export class UI {
         ${G.stage >= 2 ? `· Taxes: ${G.taxes.paid ? `next day ${G.taxes.nextDay}` : `<span class="pwarn">OWED ${G.taxes.owed}</span>`}` : ''}</div>
       <div class="pdim">Defense: ${def.onDuty}/${def.guards} guards on duty
         ${def.away ? ` (<span class="pwarn">${def.away} away with groups</span>)` : ''}
-        ${def.unmanned ? ` · <span class="pwarn">${def.unmanned} post(s) unmanned</span>` : ''}</div>
+        ${def.unmanned ? ` · <span class="pwarn">${def.unmanned} post(s) unmanned</span>` : ''}
+        ${G.tamed.length ? ` · Bound beasts: ${G.tamed.map(t => `${t.name} (${t.role})`).join(', ')}` : ''}
+        ${G.redMoon.active ? ' · <b style="color:#c0392b">RED MOON</b>'
+          : G.day >= G.redMoon.nextDay - 1 ? ` · <span class="pwarn">Red Moon: ${G.day === G.redMoon.nextDay ? 'TONIGHT' : 'tomorrow night'}</span>`
+          : ` · Red Moon in ${G.redMoon.nextDay - G.day} day(s)`}</div>
       ${warns.length ? `<div class="pwarn">⚠ ${warns.join('<br>⚠ ')}</div>` : '<div class="pdim">All is well on the frontier.</div>'}
       <table><tr><th>Villager</th><th>Role</th><th>HP</th><th>Home</th><th>State</th></tr>
         ${vrows || '<tr><td colspan=5>No villagers yet — recruit travelers on the King\'s Road.</td></tr>'}</table>
@@ -453,6 +506,23 @@ export class UI {
     } else if (act === 'trade') {
       const err = doTrade(+id);
       if (err) this.log(err);
+      this._renderPanel();
+      return;
+    } else if (act === 'trole') {
+      c.role = id;
+      this.log(id === 'companion' ? `${c.name} falls in at your heel.`
+        : id === 'defender' ? `${c.name} will watch over the village.`
+        : `${c.name} curls up near the fire.`);
+      this._renderPanel();
+      return;
+    } else if (act === 'tfeed') {
+      if ((G.playerInv.meat || 0) > 0) {
+        G.playerInv.meat--;
+        c.fedToday = true;
+        c.trust = Math.min(100, c.trust + 4);
+        c.hp = Math.min(c.maxHp, c.hp + 10);
+        this.log(`${c.name} takes the meat from your hand. (+trust)`);
+      }
       this._renderPanel();
       return;
     } else if (act === 'gcreate') {

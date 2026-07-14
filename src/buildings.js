@@ -325,6 +325,23 @@ export const BUILDING_DEFS = {
       return g;
     },
   },
+  totem: {
+    name: 'Bone Totem', key: null, cost: { bones: 4, wood: 2 }, hp: 60, r: 0.3,
+    desc: 'Old rites; wards ghosts without fire', fireproof: true,
+    make() {
+      const g = new THREE.Group();
+      const boneMat = new THREE.MeshLambertMaterial({ color: 0xd8cfb8 });
+      cyl(g, 0.1, 0.14, 2.4, 6, MAT.beam, 0, 1.2, 0);
+      bx(g, 0.9, 0.1, 0.1, boneMat, 0, 2.1, 0, 0.3);           // crossed bones
+      bx(g, 0.9, 0.1, 0.1, boneMat, 0, 2.1, 0, -0.3);
+      bx(g, 0.28, 0.34, 0.26, boneMat, 0, 2.45, 0);            // beast skull
+      bx(g, 0.1, 0.12, 0.1, boneMat, -0.08, 2.28, 0.1);        // jaw
+      bx(g, 0.1, 0.12, 0.1, boneMat, 0.08, 2.28, 0.1);
+      for (let i = 0; i < 3; i++)                              // hanging charms
+        bx(g, 0.05, 0.22, 0.05, boneMat, -0.3 + i * 0.3, 1.55 - (i % 2) * 0.15, 0.12);
+      return g;
+    },
+  },
   torch: {
     name: 'Torch Post', key: null, cost: { wood: 2 }, hp: 40, r: 0.25,
     desc: 'Light; wards ghosts', fireproof: true,
@@ -347,7 +364,7 @@ BUILDING_DEFS.campfire.fireproof = true;
 
 export const BUILD_ORDER = ['campfire', 'chest', 'workbench', 'wall', 'gate', 'watchpos',
   'foundation', 'wallpiece', 'windowwall', 'doorpiece', 'farm', 'animalpen', 'house',
-  'guardpost', 'torch'];
+  'guardpost', 'torch', 'totem'];
 
 let nextBid = 1;
 
@@ -454,7 +471,7 @@ export class Building {
     if (this.worker) this.worker.job = null;
     for (const v of this.residents) v.makeHomeless();
     this.residents = [];
-    if (byEnemy) G.ui.log(`Your ${this.def.name} was destroyed!`);
+    if (byEnemy) { G.ui.log(`Your ${this.def.name} was destroyed!`); G.overnight.buildingsLost++; }
     applyBuildingEffects();
     refreshTerritory();
   }

@@ -20,7 +20,9 @@ import { updateAnimals, dailyAnimalProduce, Animal, ANIMAL_DEFS } from './livest
 import { evaluateStage, collectTaxes } from './progression.js';
 import { Group, updateGroups } from './groups.js';
 import { maybeSpawnMerchant, updateMerchant } from './merchant.js';
-import { settlementWithdraw } from './storage.js';
+import { settlementWithdraw, settlementFood, settlementCount } from './storage.js';
+import { redMoonDawn, redMoonDusk, redMoonDawnAfter, redMoonMult } from './progression.js';
+import { Tamed, updateTamed, dailyTamedCare } from './taming.js';
 
 const SAVE_KEY = 'kotc-save-v3';
 
@@ -94,6 +96,11 @@ function saveGame() {
     const bIdx = b => G.buildings.indexOf(b);
     const data = {
       day: G.day, time: G.time, stage: G.stage, taxes: G.taxes,
+      redMoon: G.redMoon,
+      tamed: G.tamed.filter(t => !t.dead).map(t => ({
+        type: t.type, name: t.name, hp: t.hp, trust: t.trust, role: t.role,
+        x: t.pos.x, z: t.pos.z,
+      })),
       playerInv: G.playerInv,
       werewolfSlain: G.werewolfSlain,
       alertAttack: alertState.level === 'attack',
@@ -142,6 +149,7 @@ function loadGame() {
     const d = JSON.parse(raw);
     G.day = d.day; G.time = d.time; G.stage = d.stage ?? -1;
     Object.assign(G.taxes, d.taxes || {});
+    if (d.redMoon) Object.assign(G.redMoon, d.redMoon);
     Object.assign(G.playerInv, d.playerInv || {});
     G.werewolfSlain = !!d.werewolfSlain;
     for (const b of d.buildings) {
@@ -167,6 +175,11 @@ function loadGame() {
       G.villagers.push(nv);
     }
     for (const gr of d.graves || []) addGrave(gr.name, false);
+    for (const td of d.tamed || []) {
+      const nt = new Tamed(td.type, td.x, td.z);
+      nt.name = td.name; nt.hp = td.hp; nt.trust = td.trust; nt.role = td.role;
+      G.tamed.push(nt);
+    }
     for (const gd of d.groups || []) {
       const leader = G.villagers[gd.leader];
       if (!leader) continue;
@@ -200,26 +213,69 @@ function loadGame() {
 let lastNight = isNight();
 let wandererTimer = 20;
 let stageTimer = 0;
+let duskWarned = false;
+
+// assemble the dawn assessment: every question the loop bible says the UI must answer
+function morningReport() {
+  const pop = G.villagers.filter(v => !v.dead).length;
+  const food = settlementFood();
+  const rep = {
+    day: G.day, pop, food,
+    foodDays: pop ? Math.floor(food / pop) : '∞',
+    deaths: [...G.overnight.deaths],
+    livestockLost: G.overnight.livestockLost,
+    buildingsLost: G.overnight.buildingsLost,
+    damaged: G.buildings.filter(b => b.hp < b.maxHp - 1).length,
+    injured: G.villagers.filter(v => !v.dead && v.hp < 60).length,
+    guardsAway: G.villagers.filter(v => !v.dead && v.role === 'guard' &&
+      v.group && v.group.command).length,
+    cropsReady: G.buildings.filter(b => b.type === 'farm' && b.cropState === 'ready').length,
+    lowWood: settlementCount('wood') + G.playerInv.wood < 10,
+    merchant: !!(G.merchant && !G.merchant.gone),
+    taxesIn: G.stage >= 2 ? Math.max(0, G.taxes.nextDay - G.day) : -1,
+    incense: settlementCount('incense') + (G.playerInv.incense || 0),
+    redMoonTonight: G.day === G.redMoon.nextDay,
+    redMoonTomorrow: G.day === G.redMoon.nextDay - 1,
+  };
+  if (G.day > 1) G.ui.openMorningReport(rep);
+}
 
 function worldEvents(dt) {
   const night = isNight();
   if (night && !lastNight) {
-    nightSpawns();
-    G.ui.log('Night falls. The cursed things stir...');
+    const redTonight = redMoonDusk();      // the Red Moon rises on its appointed night
+    nightSpawns(redMoonMult());
+    if (!redTonight) G.ui.log('Night falls. The cursed things stir...');
     // burn incense from storage: the smoke keeps ghosts off the settlement
     G.incenseWard = settlementWithdraw('incense', 1) === 1;
     if (G.incenseWard) G.ui.log('🕯 Incense smoke drifts over the village — the dead will keep their distance tonight.');
-    if (G.day >= 2 && G.day % 3 === 0) banditRaid();
+    if ((G.day >= 2 && G.day % 3 === 0) || (redTonight && Math.random() < 0.5)) banditRaid();
   } else if (!night && lastNight) {
+    redMoonDawnAfter();       // the red sky pales; the world takes stock
     dawnRespawns();
     G.incenseWard = false;
-    G.ui.log(`Dawn of day ${G.day}.`);
     consumeDailyFood();       // brief §13: one ration per villager per day
     dailyAnimalProduce();     // brief §14: eggs & milk gather at the pen
+    dailyTamedCare();         // creature care loop: feed the bound beasts
     collectTaxes();           // brief §15: the Kingdom takes its due
+    redMoonDawn();            // one-full-day warning before the next Red Moon
     if (Math.random() < 0.9) spawnWanderer();
+    // the morning assessment (loop bible): what state is the refuge in?
+    morningReport();
+    G.overnight = { deaths: [], livestockLost: 0, buildingsLost: 0 };
   }
   lastNight = night;
+
+  // returning before dark is part of the game: warn the strayed
+  if (!duskWarned && G.time > 0.72 && G.time < 0.79) {
+    duskWarned = true;
+    const fire = G.buildings.find(b => b.type === 'campfire');
+    if (fire && Math.hypot(G.player.pos.x - fire.x, G.player.pos.z - fire.z) > 85) {
+      G.ui.banner('NIGHT APPROACHES', 'You are far from the village lights.');
+      G.ui.log('🌙 Dusk. The dark hunts far from home — run for the walls.');
+    }
+  }
+  if (G.time < 0.7) duskWarned = false;
 
   // the merchant carriage arrives around midday from Village stage on
   if (!night && G.time > 0.45 && G.time < 0.55) maybeSpawnMerchant();
@@ -272,6 +328,7 @@ function tick() {
     updateAlerts(dt);
     updateGroups(dt);
     updateMerchant(dt);
+    updateTamed(dt);
     worldEvents(dt);
     G.ui.update(dt, zoneAt(G.player.pos.x, G.player.pos.z));
   }

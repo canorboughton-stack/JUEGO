@@ -84,7 +84,7 @@ function makeGhost() {
 // ---------- creature definitions ----------
 export const CREATURE_DEFS = {
   boar:     { hp: 60,  dmg: 16, speed: 6.5, aggro: 11, atkR: 1.8, cd: 1.5, r: 0.7,
-              loot: { meat: 3, hide: 1 },
+              loot: { meat: 3, hide: 1, bones: 1 }, tameable: true,
               make: () => {
                 const b = makeBeast(1.5, 1.0, 0.8, 0x5c4028, 0x4a3220);
                 const bone = new THREE.MeshLambertMaterial({ color: 0xd8cfb8 });
@@ -100,7 +100,7 @@ export const CREATURE_DEFS = {
                 return b;
               }, name: 'Boar' },
   wolf:     { hp: 45,  dmg: 12, speed: 8,   aggro: 26, atkR: 1.9, cd: 1.1, r: 0.55,
-              loot: { meat: 1, hide: 1 }, prefs: ['livestock', 'villager', 'player'],
+              loot: { meat: 1, hide: 1, bones: 1 }, prefs: ['livestock', 'villager', 'player'], tameable: true,
               make: () => {
                 const b = makeBeast(1.5, 0.9, 0.45, 0x6e6e78, 0x5a5a63); // lean, hungry
                 const fur = new THREE.MeshLambertMaterial({ color: 0x5a5a63 });
@@ -112,7 +112,7 @@ export const CREATURE_DEFS = {
                 return b;
               }, name: 'Wolf' },
   blackdog: { hp: 35,  dmg: 15, speed: 9.5, aggro: 32, atkR: 1.9, cd: 0.9, r: 0.5, nocturnal: 'vanish',
-              loot: { hide: 1 }, prefs: ['livestock', 'villager', 'player'],
+              loot: { hide: 1, bones: 1, monsterpart: 1 }, prefs: ['livestock', 'villager', 'player'],
               make: () => {
                 const b = makeBeast(1.3, 0.95, 0.55, 0x14141a, 0x0c0c10); // broader chest
                 bx(b.group, 0.62, 0.45, 0.45, new THREE.MeshLambertMaterial({ color: 0x14141a }),
@@ -128,12 +128,12 @@ export const CREATURE_DEFS = {
               }, name: 'Black Dog' },
   // ghouls are dead people changed by the land — clothing remnants, wrong posture
   ghoul:    { hp: 95,  dmg: 18, speed: 3.4, aggro: 20, atkR: 2.0, cd: 1.6, r: 0.6, nocturnal: 'dormant',
-              loot: { incense: 1 },
+              loot: { incense: 1, bones: 2 },
               make: () => makeCharacter({ tunic: 0x4a5240, skin: 0x76866a, pants: 0x3e4636,
                 boots: 0x76866a, stance: 'hunched', buildScale: 0.92 }),
               name: 'Ghoul' },
   rotghoul: { hp: 180, dmg: 26, speed: 2.6, aggro: 18, atkR: 2.2, cd: 2.0, r: 0.75, nocturnal: 'dormant',
-              loot: { incense: 2 },
+              loot: { incense: 2, bones: 3, monsterpart: 1 },
               make: () => makeCharacter({ tunic: 0x42502e, skin: 0x5c6a44, pants: 0x36422a,
                 boots: 0x5c6a44, scale: 1.35, stance: 'hunched', buildScale: 1.15 }),
               name: 'Rot Ghoul' },
@@ -156,7 +156,7 @@ export const CREATURE_DEFS = {
   ghost:    { hp: 50,  dmg: 11, speed: 4.8, aggro: 30, atkR: 2.2, cd: 1.4, r: 0.5, floats: true,
               loot: { incense: 2 }, nocturnal: 'vanish', noCollide: true, make: makeGhost, name: 'Ghost' },
   werewolf: { hp: 650, dmg: 38, speed: 8.5, aggro: 42, atkR: 2.9, cd: 1.5, r: 1.1, boss: true,
-              loot: { meat: 10, hide: 5 }, prefs: ['livestock', 'villager', 'player'],
+              loot: { meat: 10, hide: 5, bones: 5, monsterpart: 3 }, prefs: ['livestock', 'villager', 'player'],
               make: makeWerewolf, name: 'The White Werewolf' },
 };
 
@@ -189,8 +189,15 @@ export class Creature {
     this.hp -= amount;
     this.hitT = 0.18; // directional flinch (animation bible §13: readable hit reactions)
     this.hitDir = from && from.pos ? Math.sign((from.pos.x - this.pos.x) || 1) : 1;
+    // taming loop: hurt a wild beast below a quarter health and it breaks —
+    // it stops fighting and can be bound (hold E with 1 incense + 2 meat)
+    if (this.def.tameable && !this.weakened && this.hp > 0 && this.hp <= this.maxHp * 0.25) {
+      this.weakened = true;
+      this.target = null;
+      G.ui.log(`The ${this.def.name.toLowerCase()} is weakened — it can be bound! (E: ritual, needs 1 incense + 2 meat)`);
+    }
     // getting hit always draws aggro
-    if (from) { this.target = from; this.state = 'chase'; }
+    if (!this.weakened && from) { this.target = from; this.state = 'chase'; }
     // pack tactics: hurting one wolf angers its pack
     if (this.packId) {
       for (const c of G.creatures)
@@ -271,7 +278,8 @@ export class Creature {
     // --- werewolf territory rules: it guards the north, doesn't chase to your door ---
     if (d.boss) {
       const dh = dist2d(this.pos.x, this.pos.z, this.home.x, this.home.z);
-      if (dh > POI.werewolfDen.r + 26) {
+      // under the Red Moon the beast hunts wherever it pleases
+      if (dh > POI.werewolfDen.r + 26 && !(G.redMoon && G.redMoon.active)) {
         this.target = null; this.state = 'return';
       }
       if (this.state === 'return') {
@@ -285,9 +293,9 @@ export class Creature {
     // --- ghosts fear the light: torches & campfires burn them ---
     if (this.type === 'ghost') {
       for (const b of G.buildings) {
-        if ((b.type === 'torch' || b.type === 'campfire') && !b.destroyed &&
+        if ((b.type === 'torch' || b.type === 'campfire' || b.type === 'totem') && !b.destroyed &&
             dist2d(this.pos.x, this.pos.z, b.x, b.z) < 8) {
-          this.hp -= dt * 14;
+          this.hp -= dt * (G.redMoon && G.redMoon.active ? 5 : 14);
           if (this.hp <= 0) { this.die(); return; }
         }
       }
@@ -301,6 +309,21 @@ export class Creature {
         this._settle(dt);
         return;
       }
+    }
+
+    // --- weakened beasts cower and limp away; they no longer fight ---
+    if (this.weakened) {
+      this.target = null;
+      if (G.player && !G.player.dead) {
+        const dp = dist2d(this.pos.x, this.pos.z, G.player.pos.x, G.player.pos.z);
+        if (dp < 9 && dp > 3.2) {
+          const away = Math.atan2(this.pos.x - G.player.pos.x, this.pos.z - G.player.pos.z);
+          this._moveToward(this.pos.x + Math.sin(away) * 6, this.pos.z + Math.cos(away) * 6,
+            dt, d.speed * 0.3);
+        }
+      }
+      this._settle(dt);
+      return;
     }
 
     // --- werewolf feeds and leaves (brief §11): hunt, kill, retreat ---
@@ -573,20 +596,22 @@ export function spawnInitialCreatures() {
   spawn('werewolf', POI.werewolfDen.x, POI.werewolfDen.z);
 }
 
-// called at dusk each night
-export function nightSpawns() {
+// called at dusk each night; mult > 1 on Red Moon nights (escalates each time)
+export function nightSpawns(mult = 1) {
   // roaming ghouls near the ruins drift outward
-  for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < Math.round(2 * mult); i++) {
     const a = Math.random() * 6.28;
     spawn('ghoul', POI.ruins.x + Math.cos(a) * 40, POI.ruins.z + Math.sin(a) * 40);
   }
   // black dogs prowl the frontier
-  if (Math.random() < 0.7) {
-    const a = Math.random() * 6.28;
-    spawn('blackdog', Math.cos(a) * 90, 10 + Math.sin(a) * 70);
+  for (let i = 0; i < Math.max(1, Math.round(mult)); i++) {
+    if (Math.random() < 0.7 * mult) {
+      const a = Math.random() * 6.28;
+      spawn('blackdog', Math.cos(a) * 90, 10 + Math.sin(a) * 70);
+    }
   }
   // ghosts drift from the ruins — more as days pass
-  const nGhost = Math.min(3, 1 + Math.floor(G.day / 4));
+  const nGhost = Math.min(3 + Math.round(mult), Math.round((1 + Math.floor(G.day / 4)) * mult));
   let ghostsRose = false;
   for (let i = 0; i < nGhost; i++) {
     if (Math.random() < 0.6) {

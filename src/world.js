@@ -62,6 +62,7 @@ export class World {
     this.trees = [];  // {x,z,alive,respawn}
     this.rocks = [];
     this.bushes = [];
+    this.herbs = [];
     this._buildTerrain();
     this._buildVegetation();
     this._buildRuins();
@@ -189,6 +190,27 @@ export class World {
       this.bushes.push({ x: b.x, z: b.z, alive: true, respawn: 0 });
     });
     G.scene.add(this.bushIM);
+
+    // Herb patches: pale flowering plants in meadows and forest fringes —
+    // the raw material for incense and future medicine (loop bible §Resources)
+    const herbGeo = new THREE.ConeGeometry(0.35, 0.75, 5);
+    const herbMat = new THREE.MeshLambertMaterial({ color: 0x7fa86a });
+    const herbSpots = [];
+    for (let i = 0; i < 42; i++) {
+      const a = Math.random() * 6.28, d = 35 + Math.random() * 80;
+      const x = Math.cos(a) * d, z = Math.sin(a) * d * 0.9 + 5;
+      if (Math.abs(z - POI.roadZ) < 6 || Math.hypot(x, z) < 25) continue;
+      herbSpots.push({ x, z });
+    }
+    this.herbIM = new THREE.InstancedMesh(herbGeo, herbMat, herbSpots.length);
+    herbSpots.forEach((h, i) => {
+      dummy.position.set(h.x, terrainHeight(h.x, h.z) + 0.35, h.z);
+      dummy.scale.set(1, 1, 1); dummy.rotation.set(0, Math.random() * 6, 0);
+      dummy.updateMatrix();
+      this.herbIM.setMatrixAt(i, dummy.matrix);
+      this.herbs.push({ x: h.x, z: h.z, alive: true, respawn: 0 });
+    });
+    G.scene.add(this.herbIM);
   }
 
   _hideInstance(im, i) {
@@ -218,6 +240,13 @@ export class World {
     this.bushIM.setMatrixAt(i, dummy.matrix);
     this.bushIM.instanceMatrix.needsUpdate = true;
   }
+  _restoreHerb(i) {
+    const h = this.herbs[i], dummy = new THREE.Object3D();
+    dummy.position.set(h.x, terrainHeight(h.x, h.z) + 0.35, h.z);
+    dummy.updateMatrix();
+    this.herbIM.setMatrixAt(i, dummy.matrix);
+    this.herbIM.instanceMatrix.needsUpdate = true;
+  }
 
   // Harvest APIs used by the player
   nearestResource(x, z, maxD = 3.2) {
@@ -233,6 +262,7 @@ export class World {
     consider(this.trees, 'tree', 'chop tree (+5 wood)');
     consider(this.rocks, 'rock', 'mine rock (+4 stone)');
     consider(this.bushes, 'bush', 'gather wild cabbage (+2)');
+    consider(this.herbs, 'herb', 'pick herbs (+2)');
     return best;
   }
 
@@ -254,6 +284,10 @@ export class World {
       const b = this.bushes[i]; b.alive = false; b.respawn = 70;
       this._hideInstance(this.bushIM, i);
       give('cabbage', 2);
+    } else if (kind === 'herb') {
+      const h = this.herbs[i]; h.alive = false; h.respawn = 90;
+      this._hideInstance(this.herbIM, i);
+      give('herbs', 2);
     }
   }
 
@@ -389,6 +423,7 @@ export class World {
     tick(this.trees, i => this._restoreTree(i));
     tick(this.rocks, i => this._restoreRock(i));
     tick(this.bushes, i => this._restoreBush(i));
+    tick(this.herbs, i => this._restoreHerb(i));
 
     // sun position orbits the player so shadows stay crisp
     const t = G.time;
@@ -410,6 +445,14 @@ export class World {
     const f = (t - a.t) / Math.max(0.0001, b.t - a.t);
     const cs = new THREE.Color(a.sky).lerp(new THREE.Color(b.sky), f);
     const cf = new THREE.Color(a.fog).lerp(new THREE.Color(b.fog), f);
+    // the Red Moon stains the night crimson (loop bible: the sky itself warns you)
+    if (G.redMoon && G.redMoon.active && isNight()) {
+      cs.lerp(new THREE.Color(0x2e070c), 0.85);
+      cf.lerp(new THREE.Color(0x30090d), 0.85);
+      this.moon.color.setHex(0xc03030);
+    } else {
+      this.moon.color.setHex(0x8899cc);
+    }
     G.scene.background.copy(cs);
     G.scene.fog.color.copy(cf);
     G.scene.fog.near = isNight() ? 28 : 60;

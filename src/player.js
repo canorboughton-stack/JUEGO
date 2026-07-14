@@ -4,6 +4,7 @@ import { G, clamp, dist2d, resolveCollisions, isNight } from './state.js';
 import { makeCharacter, addSword, pickupLoot } from './entities.js';
 import { buildState, tryPlace } from './buildings.js';
 import { FOOD_TYPES } from './storage.js';
+import { bindCreature } from './taming.js';
 
 export class Player {
   constructor() {
@@ -113,6 +114,7 @@ export class Player {
       this.st = Math.max(0, this.st - 9);
     }
     this.hp -= n;
+    if (this.ritualT > 0) { this.ritualT = 0; G.ui.log('The binding ritual was broken!'); }
     G.ui.damageFlash();
     if (this.hp <= 0) this._die();
   }
@@ -288,6 +290,23 @@ export class Player {
     if (G.merchant && !G.merchant.gone && G.merchant.state === 'trading' &&
         near(G.merchant.pos.x, G.merchant.pos.z, 4.5))
       best = { kind: 'trade', obj: G.merchant, label: 'trade with the merchant' };
+    // a weakened beast can be bound (taming loop: the Binding Ritual)
+    for (const c of G.creatures) {
+      if (c.dead || !c.weakened) continue;
+      if (near(c.pos.x, c.pos.z, 3.6)) {
+        best = { kind: 'ritual', obj: c,
+          label: `bind the ${c.def.name.toLowerCase()} — ritual (1 incense + 2 meat)`, hold: true };
+        break;
+      }
+    }
+    // tend a tamed companion
+    for (const t of G.tamed) {
+      if (t.dead) continue;
+      if (near(t.pos.x, t.pos.z, 3)) {
+        best = { kind: 'tamed', obj: t, label: `tend ${t.name} the ${t.type}` };
+        break;
+      }
+    }
     // natural resources
     if (!best) {
       const r = G.world.nearestResource(this.pos.x, this.pos.z);
@@ -309,6 +328,21 @@ export class Player {
       } else if (best.kind === 'extinguish') {
         best.obj.extinguishTick(dt);
         holdProgress = 1 - best.obj.fire;
+      } else if (best.kind === 'ritual') {
+        // the Binding Ritual: 6 uninterrupted seconds; broken by taking damage
+        if ((G.playerInv.incense || 0) < 1 || (G.playerInv.meat || 0) < 2) {
+          G.ui.prompt('✗ the ritual needs 1 incense + 2 meat in your pack');
+          G.ui.gatherProgress(0);
+          return;
+        }
+        this.ritualT = (this.ritualT || 0) + dt;
+        holdProgress = this.ritualT / 6;
+        if (this.ritualT >= 6) {
+          this.ritualT = 0;
+          G.playerInv.incense -= 1;
+          G.playerInv.meat -= 2;
+          bindCreature(best.obj);
+        }
       } else if (best.hold) {
         this.gatherHold += dt;
         holdProgress = this.gatherHold / 1.4;
@@ -324,6 +358,7 @@ export class Player {
         else if (best.kind === 'recruit') G.ui.openRecruitMenu(best.obj);
         else if (best.kind === 'talk') G.ui.openVillagerPanel(best.obj);
         else if (best.kind === 'trade') G.ui.openTradePanel();
+        else if (best.kind === 'tamed') G.ui.openTamedPanel(best.obj);
         else if (best.kind === 'chest') G.ui.openStoragePanel(best.obj);
         else if (best.kind === 'craft') G.ui.openCraftPanel(best.obj);
         else if (best.kind === 'pen') G.ui.openPenPanel(best.obj);
@@ -337,6 +372,7 @@ export class Player {
       }
     } else {
       this.gatherHold = 0;
+      this.ritualT = 0; // stepping away breaks the binding
     }
     if (!G.keys['KeyE']) this._ePressed = false;
 

@@ -5,12 +5,14 @@
 // player + settlement chests; farmers physically carry crops to a chest.
 import { G, dist2d } from './state.js';
 
-export const RESOURCES = ['wood', 'stone', 'meat', 'corn', 'cabbage', 'hide', 'incense'];
+export const RESOURCES = ['wood', 'stone', 'meat', 'corn', 'cabbage', 'hide',
+  'herbs', 'bones', 'monsterpart', 'incense'];
 export const FOOD_TYPES = ['corn', 'cabbage', 'meat']; // eaten cheapest-first
 export const ITEMS = ['sword', 'bow'];                 // crafted equipment
 export const RES_ICONS = {
   wood: '🪵', stone: '🪨', meat: '🍖', corn: '🌽', cabbage: '🥬',
-  hide: '🟫', incense: '🕯', sword: '🗡', bow: '🏹',
+  hide: '🟫', herbs: '🌿', bones: '🦴', monsterpart: '🧿', incense: '🕯',
+  sword: '🗡', bow: '🏹',
 };
 
 export const PLAYER_CARRY_CAP = 80;   // total resource units the player can haul
@@ -137,4 +139,6 @@ export const RECIPES = [
     desc: 'Arms one guard' },
   { id: 'bow', name: 'Hunting Bow', cost: { wood: 5, hide: 2 },
     desc: 'Ranged weapon for watch positions' },
+  { id: 'incense', name: 'Incense', cost: { herbs: 2 },
+    desc: 'Burned at dusk to ward ghosts; needed for binding rituals' },
 ];

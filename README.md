@@ -67,7 +67,35 @@ screen to lock the mouse.
    incense for seed corn, timber, stone, or second-hand weapons (`E` at the cart).
 
 Press **Tab** for the settlement management panel: population, beds, food, alert level,
-villager states and problems, farm states, warnings, taxes, defense, and **groups**.
+villager states and problems, farm states, warnings, taxes, defense, **groups**,
+bound beasts, and the Red Moon countdown.
+
+## The daily loop (the engine that keeps you playing)
+
+Every dawn opens the **morning report** — food days remaining, who died in the
+night, what burned, which farms are ready, when the taxes come, whether the moon
+is turning. You make today's plan before you leave the gate, and the question is
+always the same: *"Can I safely leave my village today?"*
+
+- **Herbs** grow wild; the workbench turns 2 herbs into 1 **incense** — burned at
+  dusk to ward the settlement, spent in binding rituals, precious in trade.
+- **Bones** from your kills raise **Bone Totems** (fireless ghost wards); **monster
+  parts** fetch a scholar's price at the cart.
+- Guards between patrol legs inspect the walls and sharpen their blades. Stray too
+  far at dusk and the game will tell you what you already feel: run for the lights.
+
+**Taming — living companions, not equipment.** Beat a wolf or boar below a quarter
+health and it breaks; hold `E` with 1 incense + 2 meat for the six-second **Binding
+Ritual** (take a hit and it shatters). The bound beast has a name, eats a meat
+ration from storage each dawn, and earns or loses **trust**: neglect makes it
+sullen, then gone. Assign it as **Companion** (hunts at your heel) or **Defender**
+(patrols the village).
+
+**The Red Moon.** Announced one full day ahead — villagers mutter, you stockpile,
+repair, craft incense, recall your groups. Then the sky turns crimson: merchants
+flee, spawns multiply, ghosts shrug off torchlight (only incense holds), and the
+White Werewolf ignores its territory and hunts wherever it pleases. Survive to
+dawn and the next one, days later, will be worse. That is the deal.
 
 ## Living villagers & followers
 
@@ -142,6 +170,7 @@ src/villagers.js  villager framework, farmer & guard loops, housing, food
 src/livestock.js  animal pens, chickens/pigs/cows, production
 src/progression.js data-driven settlement stages + Kingdom taxes
 src/merchant.js   the merchant carriage: road travel, halt, barter trades
+src/taming.js     binding ritual, tamed creatures, trust, companion/defender AI
 src/player.js     third-person controller, camera, combat, interactions
 src/ui.js         HUD, settlement panel, storage/craft/pen/recruit menus
 src/main.js       bootstrap, main loop, daily events, save/load (v2)

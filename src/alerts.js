@@ -43,7 +43,8 @@ export function updateAlerts(dt) {
   let hostileInside = false, hostileNear = false, nearWhat = '', nearPos = null;
   for (const c of G.creatures) {
     if (c.dead) continue;
-    if (c.type === 'boar' && !c.target) continue; // grazing boars aren't a threat
+    if (c.type === 'boar' && !c.target) continue;
+      if (c.weakened) continue; // broken beasts are prey for the ritual, not threats // grazing boars aren't a threat
     if (inTerritory(c.pos.x, c.pos.z)) {
       hostileInside = true; nearWhat = c.def.name;
       nearPos = { x: c.pos.x, z: c.pos.z };

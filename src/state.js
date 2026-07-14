@@ -39,6 +39,11 @@ export const G = {
   groups: [],     // Group instances (group leader system)
   merchant: null, // the traveling merchant carriage, when on the road
   incenseWard: false, // incense burned at dusk keeps ghosts off the settlement
+
+  // the loop engine (core gameplay loop bible)
+  tamed: [],      // bound creatures: living companions, not equipment
+  redMoon: { nextDay: 5, active: false, count: 0, warned: false },
+  overnight: { deaths: [], livestockLost: 0, buildingsLost: 0 }, // for the morning report
 };
 
 // Record a notable event; villagers bark about recent memories during downtime.

@@ -41,6 +41,7 @@ export class Animal {
       this.dead = true;
       G.scene.remove(this.mesh);
       G.ui.log(`A ${this.def.name.toLowerCase()} was killed!`);
+      G.overnight.livestockLost++;
       const i = G.animals.indexOf(this);
       if (i >= 0) G.animals.splice(i, 1);
     }

@@ -49,6 +49,51 @@ export function stageName() {
   return G.stage >= 0 ? STAGES[G.stage].name : 'Wilderness Camp';
 }
 
+// ---------- THE RED MOON (loop bible) ----------
+// Not another event: the world telling the player "tonight you survive — or you
+// lose what you've built." Announced one full day ahead. Escalates each time.
+export function redMoonDawn() {
+  const rm = G.redMoon;
+  // warning day: one full day of preparation
+  if (!rm.warned && G.day === rm.nextDay - 1) {
+    rm.warned = true;
+    recordMemory('redmoon');
+    G.ui.banner('THE MOON IS TURNING', 'Tomorrow night it rises red. Prepare.');
+    G.ui.log('🌑 The moon is turning. Repair the walls, stock food, craft incense, recall your people.');
+  }
+}
+
+export function redMoonDusk() {
+  const rm = G.redMoon;
+  if (G.day !== rm.nextDay) return false;
+  rm.active = true;
+  rm.count++;
+  rm.warned = false;
+  G.ui.banner('THE RED MOON RISES', 'Survive until dawn.');
+  G.ui.log('🔴 The Red Moon rises. The dead ignore the torchlight. The beast in the north is loose.');
+  // merchants flee the roads
+  if (G.merchant && !G.merchant.gone) {
+    G.merchant.remove();
+    G.ui.log('The merchant whips the mule east — no trade under a red sky.');
+  }
+  return true;
+}
+
+export function redMoonDawnAfter() {
+  const rm = G.redMoon;
+  if (!rm.active) return;
+  rm.active = false;
+  rm.nextDay = G.day + 4 + Math.floor(Math.random() * 3); // and it will come again, harder
+  recordMemory('redmoon');
+  G.ui.banner('THE RED MOON SETS', 'You survived. Rebuild.');
+  G.ui.log(`☀ The Red Moon sets. The next will be worse. (survived: ${rm.count})`);
+}
+
+// spawn multiplier for red moon nights — escalation with each occurrence
+export function redMoonMult() {
+  return G.redMoon.active ? 1.6 + G.redMoon.count * 0.4 : 1;
+}
+
 // Kingdom taxes (stage 2+): every 3 days a food levy is drawn from storage.
 export function collectTaxes() {
   if (G.stage < 2 || G.day < G.taxes.nextDay) return;

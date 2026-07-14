@@ -66,6 +66,8 @@ const BARKS = {
            'Warmth is borrowed here.'],
   travel: ['Stay close. The trees listen.', 'We should not linger out here.',
            'Eyes open. This is their ground.'],
+  redmoon: ['The moon is turning...', 'Bar every door tomorrow night.',
+            'My grandmother said the red sky drinks courage.', 'Sharpen everything. Tonight we do not sleep.'],
 };
 
 export function pickBark(v, context = null) {
@@ -275,6 +277,7 @@ export class Villager {
         if (i >= 0) this.home.residents.splice(i, 1);
       }
       G.ui.log(`✝ ${this.name} the ${this.role || 'villager'} has been slain.`);
+      G.overnight.deaths.push(this.name);
       recordMemory('death');
       addGrave(this.name);
       onVillagerDeath(this);
@@ -360,6 +363,7 @@ export class Villager {
     for (const c of G.creatures) {
       if (c.dead) continue;
       if (c.type === 'boar' && !c.target) continue;
+      if (c.weakened) continue; // broken beasts are prey for the ritual, not threats
       const d = dist2d(this.pos.x, this.pos.z, c.pos.x, c.pos.z);
       if (d < bd) { bd = d; best = c; }
     }
@@ -742,6 +746,7 @@ export class Villager {
     for (const c of G.creatures) {
       if (c.dead) continue;
       if (c.type === 'boar' && !c.target) continue;
+      if (c.weakened) continue; // broken beasts are prey for the ritual, not threats
       const dPost = dist2d(c.pos.x, c.pos.z, px, pz);
       const dSelf = dist2d(c.pos.x, c.pos.z, this.pos.x, this.pos.z);
       if (dPost > responseR && dSelf > 14) continue;
@@ -840,10 +845,41 @@ export class Villager {
     if (dPost > patrolR + 4) {
       this.state = 'Return to Post';
       this._moveToward(px, pz, dt, 5);
-    } else {
-      this.state = 'Patrol';
-      this._wanderNear(px, pz, Math.min(patrolR, 12), dt, 2.2);
+      return;
     }
+    // guards never become idle decorations (loop bible): between patrol legs
+    // they inspect walls and gates or sharpen their weapons
+    if (this._act) {
+      this._act.t -= dt;
+      if (this._act.t <= 0) { this._act = null; this.fig.armPivot.rotation.x = 0; }
+      else if (this._act.kind === 'inspect') {
+        this.state = 'Inspecting defenses';
+        const b = this._act.b;
+        if (b.destroyed) { this._act = null; return; }
+        if (dist2d(this.pos.x, this.pos.z, b.x, b.z) > Math.max(b.def.r, 1) + 1.8)
+          this._moveToward(b.x, b.z, dt, 2.4);
+        else this.mesh.rotation.y = Math.atan2(b.x - this.pos.x, b.z - this.pos.z);
+        return;
+      } else {
+        this.state = 'Sharpening weapon';
+        this.fig.armPivot.rotation.x = -0.8 + Math.sin(performance.now() * 0.02) * 0.3;
+        return;
+      }
+    }
+    this._actT = (this._actT ?? Math.random() * 20) - dt;
+    if (this._actT <= 0) {
+      this._actT = 14 + Math.random() * 18;
+      const r = Math.random();
+      if (r < 0.45) {
+        const defenses = G.buildings.filter(b =>
+          (b.type === 'wall' || b.type === 'gate' || b.type === 'wallpiece') &&
+          !b.destroyed && dist2d(this.pos.x, this.pos.z, b.x, b.z) < 26);
+        if (defenses.length)
+          this._act = { kind: 'inspect', b: defenses[Math.floor(Math.random() * defenses.length)], t: 6 };
+      } else if (r < 0.75) this._act = { kind: 'sharpen', t: 3.5 };
+    }
+    this.state = 'Patrol';
+    this._wanderNear(px, pz, Math.min(patrolR, 12), dt, 2.2);
   }
 }
 Villager.prototype.isVillager = true;
