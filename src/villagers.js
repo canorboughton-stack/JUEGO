@@ -614,8 +614,9 @@ export class Villager {
   // feeds its own material economy — find, fell, haul to a chest, repeat ----------
   _updateGatherer(dt, kind) {
     const res = kind === 'tree' ? 'wood' : 'stone';
-    // haul home once the sling is full (two fells per trip — visible round trips)
-    if (invTotal(this.carry) >= 8) {
+    // haul home once the sling is full (two fells per trip — visible round trips;
+    // 6 covers two of either trade: 2×4 wood or 2×3 stone)
+    if (invTotal(this.carry) >= 6) {
       if (this._deliver(dt)) return;
       this._gt = null;
       return;
