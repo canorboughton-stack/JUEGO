@@ -213,15 +213,33 @@ export class World {
     // meadow and hill scatter
     scatter(45, () => [-195 + Math.random() * 390, -195 + Math.random() * 390], oaks);
     scatter(40, () => [-195 + Math.random() * 390, -195 + Math.random() * 390], birches);
+    // birches love the water: white bark rings every lake shore (trees bible)
+    for (const L of LAKES)
+      scatter(11, () => {
+        const a = Math.random() * 6.28, d = L.r + 4 + Math.random() * 6;
+        return [L.x + Math.cos(a) * d, L.z + Math.sin(a) * d];
+      }, birches);
     // dead pines in the cursed north
     const deadPines = [];
     scatter(30, () => [-150 + Math.random() * 300, -190 + Math.random() * 45], deadPines);
 
+    // Art bible "detail & variation": no two trees the same color. InstancedMesh
+    // per-instance colors carry bark and foliage variation; deep-forest pines run
+    // darker (the spruce read), meadow trees lighter. Materials go white so the
+    // instance color IS the color.
+    const vary = (im, i, base, dh, dl) => {
+      _tint.setHex(base);
+      _tint.offsetHSL((Math.random() - 0.5) * dh, (Math.random() - 0.5) * 0.06,
+        (Math.random() - 0.5) * dl);
+      im.setColorAt(i, _tint);
+    };
+    const _tint = new THREE.Color();
+
     // --- pines (cone canopy) ---
     const pineTrunkGeo = new THREE.CylinderGeometry(0.28, 0.42, 3.2, 6);
-    const pineTrunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3421 });
+    const pineTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     const pineLeafGeo = new THREE.ConeGeometry(1.9, 4.6, 7);
-    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0x2a4520 });
+    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     const allPines = [...pines.map(p => ({ ...p, dead: false })),
                       ...deadPines.map(p => ({ ...p, dead: true }))];
     this.pineTrunkIM = new THREE.InstancedMesh(pineTrunkGeo, pineTrunkMat, allPines.length);
@@ -229,15 +247,19 @@ export class World {
     this.pineTrunkIM.castShadow = this.pineLeafIM.castShadow = true;
     allPines.forEach((t, i) => {
       const y = terrainHeight(t.x, t.z);
-      const s = 0.8 + Math.random() * 0.7;
+      // deep forest & north = the spruce read: taller, darker, denser
+      const deep = t.z < -30 || (t.z > 62 && Math.abs(t.x) < 100);
+      const s = (0.8 + Math.random() * 0.7) * (deep ? 1.15 : 1);
       dummy.position.set(t.x, y + 1.6 * s, t.z);
       dummy.scale.setScalar(s); dummy.rotation.y = Math.random() * 6.28;
       dummy.updateMatrix();
       this.pineTrunkIM.setMatrixAt(i, dummy.matrix);
+      vary(this.pineTrunkIM, i, t.dead ? 0x6a5f52 : 0x4a3421, 0.02, 0.05);
       if (t.dead) dummy.scale.setScalar(0.001);
       else dummy.position.y = y + 4.8 * s;
       dummy.updateMatrix();
       this.pineLeafIM.setMatrixAt(i, dummy.matrix);
+      vary(this.pineLeafIM, i, deep ? 0x203a1a : 0x2a4520, 0.03, 0.05);
       this.trees.push({ x: t.x, z: t.z, alive: true, respawn: 0, s, kind: 'pine', idx: i, dead: t.dead });
       G.colliders.push({ x: t.x, z: t.z, r: 0.55, owner: null });
     });
@@ -245,9 +267,9 @@ export class World {
 
     // --- oaks (round canopy) ---
     const oakTrunkGeo = new THREE.CylinderGeometry(0.34, 0.5, 2.6, 6);
-    const oakTrunkMat = new THREE.MeshLambertMaterial({ color: 0x54402a });
+    const oakTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     const oakLeafGeo = new THREE.SphereGeometry(2.1, 7, 6);
-    const oakLeafMat = new THREE.MeshLambertMaterial({ color: 0x3e5c26 });
+    const oakLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     this.oakTrunkIM = new THREE.InstancedMesh(oakTrunkGeo, oakTrunkMat, oaks.length);
     this.oakLeafIM = new THREE.InstancedMesh(oakLeafGeo, oakLeafMat, oaks.length);
     this.oakTrunkIM.castShadow = this.oakLeafIM.castShadow = true;
@@ -258,10 +280,12 @@ export class World {
       dummy.scale.setScalar(s); dummy.rotation.y = Math.random() * 6.28;
       dummy.updateMatrix();
       this.oakTrunkIM.setMatrixAt(i, dummy.matrix);
+      vary(this.oakTrunkIM, i, 0x54402a, 0.02, 0.06);
       dummy.position.y = y + 3.4 * s;
       dummy.scale.set(s, s * 0.8, s);
       dummy.updateMatrix();
       this.oakLeafIM.setMatrixAt(i, dummy.matrix);
+      vary(this.oakLeafIM, i, 0x3e5c26, 0.04, 0.07);
       this.trees.push({ x: t.x, z: t.z, alive: true, respawn: 0, s, kind: 'oak', idx: i });
       G.colliders.push({ x: t.x, z: t.z, r: 0.6, owner: null });
     });
@@ -269,9 +293,9 @@ export class World {
 
     // --- birches (pale slender trunks) ---
     const birchTrunkGeo = new THREE.CylinderGeometry(0.14, 0.2, 4.2, 6);
-    const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xd8d4c4 });
+    const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     const birchLeafGeo = new THREE.SphereGeometry(1.3, 6, 5);
-    const birchLeafMat = new THREE.MeshLambertMaterial({ color: 0x6a8a38 });
+    const birchLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
     this.birchTrunkIM = new THREE.InstancedMesh(birchTrunkGeo, birchTrunkMat, birches.length);
     this.birchLeafIM = new THREE.InstancedMesh(birchLeafGeo, birchLeafMat, birches.length);
     this.birchTrunkIM.castShadow = this.birchLeafIM.castShadow = true;
@@ -282,10 +306,12 @@ export class World {
       dummy.scale.setScalar(s); dummy.rotation.y = Math.random() * 6.28;
       dummy.updateMatrix();
       this.birchTrunkIM.setMatrixAt(i, dummy.matrix);
+      vary(this.birchTrunkIM, i, 0xd8d4c4, 0.01, 0.04);
       dummy.position.y = y + 4.4 * s;
       dummy.scale.set(s, s * 1.25, s);
       dummy.updateMatrix();
       this.birchLeafIM.setMatrixAt(i, dummy.matrix);
+      vary(this.birchLeafIM, i, 0x6a8a38, 0.045, 0.07);
       this.trees.push({ x: t.x, z: t.z, alive: true, respawn: 0, s, kind: 'birch', idx: i });
       G.colliders.push({ x: t.x, z: t.z, r: 0.4, owner: null });
     });
@@ -390,6 +416,153 @@ export class World {
       log.rotation.set(0, Math.random() * 3, Math.PI / 2 + (Math.random() - 0.5) * 0.2);
       log.castShadow = true;
       G.scene.add(log);
+    }
+
+    // --- grass tufts: the ground layer (vegetation guide) ---
+    // Grass grows in PATCHES, not confetti — clustered clumps read as ground
+    // cover at a distance. It may grow inside the settlement (unlike trees);
+    // only roads, water, POIs, and bare rock refuse it.
+    const badGround = (x, z) =>
+      Math.abs(z - POI.roadZ) < 9 ||
+      LAKES.some(L => dist2d(x, z, L.x, L.z) < L.r + 2) ||
+      dist2d(x, z, POI.ruins.x, POI.ruins.z) < POI.ruins.r ||
+      dist2d(x, z, POI.banditCamp.x, POI.banditCamp.z) < POI.banditCamp.r ||
+      terrainHeight(x, z) > 11 || Math.abs(x) > 190 || Math.abs(z) > 190;
+    const grassGeo = new THREE.ConeGeometry(0.15, 0.55, 4);
+    const grassMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const grassSpots = [];
+    const grassPatch = (cx, cz, base, sMin, sMax, tufts) => {
+      for (let i = 0; i < tufts; i++) {
+        const a = Math.random() * 6.28, d = Math.random() * 4.2;
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+        if (badGround(x, z)) continue;
+        grassSpots.push({ x, z, base, s: sMin + Math.random() * (sMax - sMin) });
+      }
+    };
+    // short field grass through and around the settlement
+    for (let p = 0; p < 26; p++) {
+      const a = Math.random() * 6.28, d = Math.random() * 34;
+      grassPatch(Math.cos(a) * d, Math.sin(a) * d, 0x5a6438, 0.5, 0.9, 12);
+    }
+    // tall wild meadow grass across the open map
+    for (let p = 0; p < 60; p++)
+      grassPatch(-190 + Math.random() * 380, -190 + Math.random() * 380, 0x596236, 1.0, 1.7, 13);
+    // dark forest-floor grass under both canopies
+    for (let p = 0; p < 26; p++)
+      grassPatch(42 + Math.random() * 145, -92 + Math.random() * 115, 0x3c4a2a, 0.6, 1.0, 11);
+    for (let p = 0; p < 20; p++)
+      grassPatch(-160 + Math.random() * 320, 62 + Math.random() * 105, 0x3c4a2a, 0.6, 1.0, 11);
+    // dry thin grass on the rocky west hills
+    for (let p = 0; p < 24; p++)
+      grassPatch(-185 + Math.random() * 130, -70 + Math.random() * 100, 0x83764a, 0.6, 1.2, 11);
+    const grassIM = new THREE.InstancedMesh(grassGeo, grassMat, grassSpots.length);
+    grassSpots.forEach((gr, i) => {
+      dummy.position.set(gr.x, terrainHeight(gr.x, gr.z) + 0.24 * gr.s, gr.z);
+      dummy.scale.set(gr.s * (0.8 + Math.random() * 0.6), gr.s, gr.s * (0.8 + Math.random() * 0.6));
+      dummy.rotation.set((Math.random() - 0.5) * 0.16, Math.random() * 6, (Math.random() - 0.5) * 0.16);
+      dummy.updateMatrix();
+      grassIM.setMatrixAt(i, dummy.matrix);
+      vary(grassIM, i, gr.base, 0.03, 0.08);
+    });
+    G.scene.add(grassIM);
+
+    // --- young saplings: small filler that makes the forest read layered ---
+    const sapGeo = new THREE.ConeGeometry(0.55, 1.5, 5);
+    const sapMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const sapSpots = [];
+    for (let i = 0; i < 120; i++) {
+      let x, z;
+      if (i < 55) { x = 42 + Math.random() * 145; z = -92 + Math.random() * 115; }
+      else if (i < 95) { x = -160 + Math.random() * 320; z = 62 + Math.random() * 105; }
+      else { x = -195 + Math.random() * 390; z = -195 + Math.random() * 390; }
+      if (badSpot(x, z)) continue;
+      sapSpots.push({ x, z });
+    }
+    const sapIM = new THREE.InstancedMesh(sapGeo, sapMat, sapSpots.length);
+    sapIM.castShadow = true;
+    sapSpots.forEach((sp, i) => {
+      const s = 0.5 + Math.random() * 0.7;
+      dummy.position.set(sp.x, terrainHeight(sp.x, sp.z) + 0.75 * s, sp.z);
+      dummy.scale.setScalar(s);
+      dummy.rotation.set(0, Math.random() * 6, (Math.random() - 0.5) * 0.1);
+      dummy.updateMatrix();
+      sapIM.setMatrixAt(i, dummy.matrix);
+      vary(sapIM, i, 0x3e5a2c, 0.04, 0.08);
+    });
+    G.scene.add(sapIM);
+
+    // --- mushrooms: where the dead wood is (detail & variation board) ---
+    const shroomStemGeo = new THREE.CylinderGeometry(0.05, 0.07, 0.2, 5);
+    const shroomCapGeo = new THREE.ConeGeometry(0.16, 0.14, 6);
+    const shroomStemMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const shroomCapMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const shroomSpots = [];
+    const addShrooms = (cx, cz, r, n) => {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * 6.28, d = Math.random() * r;
+        const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+        if (inLake(x, z) || Math.abs(z - POI.roadZ) < 8) continue;
+        shroomSpots.push({ x, z });
+      }
+    };
+    addShrooms(POI.ruins.x, POI.ruins.z, 34, 40);        // the cursed ground fruits
+    addShrooms(0, -165, 90, 30);                          // the dead north
+    addShrooms(110, -40, 60, 34);                         // deep forest floor
+    const stemIM = new THREE.InstancedMesh(shroomStemGeo, shroomStemMat, shroomSpots.length);
+    const capIM = new THREE.InstancedMesh(shroomCapGeo, shroomCapMat, shroomSpots.length);
+    shroomSpots.forEach((m, i) => {
+      const y = terrainHeight(m.x, m.z), s = 0.7 + Math.random() * 0.9;
+      dummy.position.set(m.x, y + 0.1 * s, m.z);
+      dummy.scale.setScalar(s); dummy.rotation.set(0, Math.random() * 6, 0);
+      dummy.updateMatrix();
+      stemIM.setMatrixAt(i, dummy.matrix);
+      vary(stemIM, i, 0xb8ac96, 0.01, 0.06);
+      dummy.position.y = y + 0.24 * s;
+      dummy.updateMatrix();
+      capIM.setMatrixAt(i, dummy.matrix);
+      vary(capIM, i, Math.random() < 0.4 ? 0x8a5a3a : 0x9a8f78, 0.02, 0.08);
+    });
+    G.scene.add(stemIM, capIM);
+
+    // --- cursed trees: twisted landmarks near the ghost ground (tree bible:
+    // "twisted or corrupted by the land, often near ghost zones") ---
+    const curseBark = new THREE.MeshLambertMaterial({ color: 0x2c2622 });
+    const cursePale = new THREE.MeshLambertMaterial({ color: 0x8a8f7a });
+    const curseSpot = [];
+    for (let i = 0; i < 7; i++) {
+      const a = i * 0.9 + 0.5, d = 30 + (i % 3) * 5;
+      curseSpot.push([POI.ruins.x + Math.cos(a) * d, POI.ruins.z + Math.sin(a) * d]);
+    }
+    curseSpot.push([POI.werewolfDen.x + 14, POI.werewolfDen.z + 10]);
+    curseSpot.push([POI.werewolfDen.x - 12, POI.werewolfDen.z + 16]);
+    for (const [cx, cz] of curseSpot) {
+      if (inLake(cx, cz)) continue;
+      const t = new THREE.Group();
+      let y = 0, ang = (Math.random() - 0.5) * 0.5;
+      let node = t;
+      // trunk grown wrong: stacked crooked segments, each bending further
+      for (let sgm = 0; sgm < 4; sgm++) {
+        const h = 1.5 - sgm * 0.22;
+        const seg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.16 + (3 - sgm) * 0.07, 0.22 + (3 - sgm) * 0.07, h, 5), curseBark);
+        seg.position.y = y + h / 2;
+        seg.rotation.z = ang;
+        seg.castShadow = true;
+        node.add(seg);
+        node = seg;
+        y = h / 2;
+        ang = (Math.random() - 0.5) * 0.9;
+      }
+      // pale sick growths where leaves should be
+      for (let b = 0; b < 3; b++) {
+        const blob = new THREE.Mesh(new THREE.SphereGeometry(0.22 + Math.random() * 0.18, 5, 4), cursePale);
+        blob.position.set((Math.random() - 0.5) * 1.4, 2.6 + Math.random() * 1.4, (Math.random() - 0.5) * 1.4);
+        t.add(blob);
+      }
+      t.position.set(cx, terrainHeight(cx, cz), cz);
+      t.rotation.y = Math.random() * 6.28;
+      G.scene.add(t);
+      G.colliders.push({ x: cx, z: cz, r: 0.5, owner: null });
     }
   }
 
@@ -689,6 +862,8 @@ export class World {
   }
 
   _buildRoadProps() {
+    // Roads bible: "rarely perfect — weather, time, and little maintenance
+    // leave their mark." Ruts, gravel, markers, and one broken promise of a cart.
     const mat = new THREE.MeshLambertMaterial({ color: 0x5a4228 });
     for (const x of [-60, 0, 60]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 2.4, 0.25), mat);
@@ -700,22 +875,102 @@ export class World {
       sign.rotation.y = 0.2;
       G.scene.add(sign);
     }
+    // wheel ruts: two worn dark lines the carts have ground into the dirt
+    // (short segments so they follow the road's rise and fall)
+    const rutMat = new THREE.MeshLambertMaterial({ color: 0x4a3d2c });
+    const rutGeo = new THREE.BoxGeometry(24, 0.05, 0.5);
+    const rutIM = new THREE.InstancedMesh(rutGeo, rutMat, 30);
+    const rd = new THREE.Object3D();
+    let ri = 0;
+    for (let x = -168; x <= 168 && ri < 30; x += 24) {
+      for (const off of [-0.9, 0.9]) {
+        rd.position.set(x, terrainHeight(x, POI.roadZ + off) + 0.045, POI.roadZ + off);
+        rd.rotation.set(0, 0, 0);
+        rd.updateMatrix();
+        rutIM.setMatrixAt(ri++, rd.matrix);
+      }
+    }
+    rutIM.count = ri;
+    G.scene.add(rutIM);
+    // gravel patches where the mud got too deep one winter
+    const gravelGeo = new THREE.DodecahedronGeometry(0.5, 0);
+    const gravelMat = new THREE.MeshLambertMaterial({ color: 0x6e6a62, flatShading: true });
+    const gravelIM = new THREE.InstancedMesh(gravelGeo, gravelMat, 60);
+    const gd = new THREE.Object3D();
+    for (let i = 0; i < 60; i++) {
+      const x = -170 + Math.random() * 340, z = POI.roadZ + (Math.random() - 0.5) * 4.5;
+      gd.position.set(x, terrainHeight(x, z) + 0.02, z);
+      gd.scale.set(0.5 + Math.random() * 0.7, 0.08, 0.4 + Math.random() * 0.6);
+      gd.rotation.y = Math.random() * 6;
+      gd.updateMatrix();
+      gravelIM.setMatrixAt(i, gd.matrix);
+    }
+    G.scene.add(gravelIM);
+    // mile markers: squat stones pacing the King's Road
+    const mileMat = new THREE.MeshLambertMaterial({ color: 0x74757c });
+    for (const x of [-150, -100, -30, 30, 100, 150]) {
+      const z = POI.roadZ - 5;
+      const stone = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.4), mileMat);
+      stone.position.set(x, terrainHeight(x, z) + 0.5, z);
+      stone.rotation.z = (Math.random() - 0.5) * 0.12; // none of them stand true anymore
+      stone.castShadow = true;
+      G.scene.add(stone);
+    }
+    // lantern posts flank the settlement turn-off — the promise of safety
+    this.lanternLights = [];
+    for (const x of [-5, 5]) {
+      const z = POI.roadZ - 7;
+      const g = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.0, 0.18), mat);
+      pole.position.y = 1.5; pole.castShadow = true; g.add(pole);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.12), mat);
+      arm.position.set(0.3, 2.9, 0); g.add(arm);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.4, 0.3),
+        new THREE.MeshBasicMaterial({ color: 0xffb655 }));
+      box.position.set(0.6, 2.65, 0); g.add(box);
+      const light = new THREE.PointLight(0xff9944, 0, 13);
+      light.position.copy(box.position); g.add(light);
+      g.position.set(x, terrainHeight(x, z), z);
+      G.scene.add(g);
+      this.lanternLights.push({ light, box, phase: x });
+    }
+    // a broken cart on the west road: one wheel gone, cargo long since taken
+    const cart = new THREE.Group();
+    const cartWood = new THREE.MeshLambertMaterial({ color: 0x4e4030 });
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 1.2), cartWood);
+    bed.position.y = 0.55; bed.rotation.z = 0.28; cart.add(bed);
+    const side = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.4, 0.1), cartWood);
+    side.position.set(0, 0.8, 0.6); side.rotation.z = 0.28; cart.add(side);
+    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 9), cartWood);
+    wheel.rotation.x = Math.PI / 2; wheel.position.set(-0.8, 0.55, -0.65); cart.add(wheel);
+    const wheelOff = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 9), cartWood);
+    wheelOff.rotation.set(Math.PI / 2 + 1.2, 0, 0.4); wheelOff.position.set(1.6, 0.12, 1.1);
+    cart.add(wheelOff);
+    const shaft = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 0.12), cartWood);
+    shaft.position.set(-1.8, 0.35, 0); shaft.rotation.z = -0.3; cart.add(shaft);
+    cart.position.set(-95, terrainHeight(-95, POI.roadZ + 2.6), POI.roadZ + 2.6);
+    cart.rotation.y = 0.5;
+    cart.traverse(o => { o.castShadow = true; });
+    G.scene.add(cart);
+    G.colliders.push({ x: -95, z: POI.roadZ + 2.6, r: 1.1, owner: null });
   }
 
   // ---------- lighting, sun & moon discs, stars ----------
   _buildLights() {
-    G.hemi = new THREE.HemisphereLight(0xbfd4e8, 0x3a3325, 0.9);
+    // lighting bible: cool desaturated world; warmth belongs to fire alone
+    G.hemi = new THREE.HemisphereLight(0xaebccc, 0x2e2b26, 0.9);
     G.scene.add(G.hemi);
-    G.sun = new THREE.DirectionalLight(0xffe8c0, 2.2);
+    G.sun = new THREE.DirectionalLight(0xf2efe6, 2.2);
     G.sun.castShadow = true;
     G.sun.shadow.mapSize.set(2048, 2048);
     const sc = G.sun.shadow.camera;
     sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70;
     sc.near = 10; sc.far = 260;
     G.scene.add(G.sun, G.sun.target);
-    G.scene.fog = new THREE.Fog(0x8fa3b8, 60, 320);
-    G.scene.background = new THREE.Color(0x8fa3b8);
-    this.moon = new THREE.DirectionalLight(0x8899cc, 0.0);
+    G.scene.fog = new THREE.Fog(0x8a9aab, 60, 320);
+    G.scene.background = new THREE.Color(0x8a9aab);
+    // moonlight: cool, faint ambient — enough for silhouettes, never for safety
+    this.moon = new THREE.DirectionalLight(0x7488b8, 0.0);
     G.scene.add(this.moon, this.moon.target);
   }
 
@@ -745,16 +1000,23 @@ export class World {
     G.scene.add(this.stars);
   }
 
-  // color keys for the day cycle
+  // Color keys for the day cycle — the lighting bible made data:
+  //   dawn  = soft cool ambient, long shadows, only a slight warm rim
+  //   day   = neutral, slightly cool; the world feels harsh, not warm
+  //   dusk  = warm horizon against cool shadows; contrast and tension rise
+  //   night = deep blue ambient, very low visibility; fire is the only warmth
+  // fogN/fogF drive how far you can see; sunC tints the key light.
   static SKY = [
-    { t: 0.00, sky: 0x0a0d1c, fog: 0x0a0d1c, sun: 0.0, hemi: 0.12 },
-    { t: 0.22, sky: 0x1c1830, fog: 0x1c1830, sun: 0.0, hemi: 0.2 },
-    { t: 0.27, sky: 0xc98e5a, fog: 0xb8916e, sun: 1.0, hemi: 0.55 },
-    { t: 0.40, sky: 0x8fb6d8, fog: 0x9db4c8, sun: 2.2, hemi: 0.95 },
-    { t: 0.60, sky: 0x8fb6d8, fog: 0x9db4c8, sun: 2.2, hemi: 0.95 },
-    { t: 0.73, sky: 0xc9744a, fog: 0xa8766e, sun: 1.0, hemi: 0.5 },
-    { t: 0.79, sky: 0x1c1830, fog: 0x1c1830, sun: 0.0, hemi: 0.2 },
-    { t: 1.00, sky: 0x0a0d1c, fog: 0x0a0d1c, sun: 0.0, hemi: 0.12 },
+    { t: 0.00, sky: 0x060911, fog: 0x070a14, sun: 0.0, sunC: 0xf2efe6, hemi: 0.055, fogN: 16, fogF: 95 },
+    { t: 0.20, sky: 0x0a0e1e, fog: 0x0b1020, sun: 0.0, sunC: 0xf2efe6, hemi: 0.07, fogN: 18, fogF: 105 },
+    { t: 0.25, sky: 0x6b7890, fog: 0x8a8a90, sun: 0.7, sunC: 0xe8d8be, hemi: 0.42, fogN: 40, fogF: 230 },
+    { t: 0.30, sky: 0x8ba0b5, fog: 0x97a3ab, sun: 1.4, sunC: 0xeee9da, hemi: 0.62, fogN: 55, fogF: 300 },
+    { t: 0.42, sky: 0x87a4bf, fog: 0x99a8b4, sun: 2.2, sunC: 0xf2efe6, hemi: 0.9, fogN: 65, fogF: 340 },
+    { t: 0.58, sky: 0x87a4bf, fog: 0x99a8b4, sun: 2.2, sunC: 0xf2efe6, hemi: 0.9, fogN: 65, fogF: 340 },
+    { t: 0.70, sky: 0x9d8f93, fog: 0x8d8390, sun: 1.5, sunC: 0xf0d7ae, hemi: 0.62, fogN: 52, fogF: 290 },
+    { t: 0.76, sky: 0xa8683e, fog: 0x6d6272, sun: 0.9, sunC: 0xffb070, hemi: 0.38, fogN: 38, fogF: 210 },
+    { t: 0.81, sky: 0x0d1122, fog: 0x0d1224, sun: 0.0, sunC: 0xf2efe6, hemi: 0.075, fogN: 18, fogF: 108 },
+    { t: 1.00, sky: 0x060911, fog: 0x070a14, sun: 0.0, sunC: 0xf2efe6, hemi: 0.055, fogN: 16, fogF: 95 },
   ];
 
   update(dt) {
@@ -790,7 +1052,8 @@ export class World {
     G.sun.target.position.set(px, 0, pz);
     this.moon.position.set(px - 60, 100, pz - 40);
     this.moon.target.position.set(px, 0, pz);
-    this.moon.intensity = isNight() ? 0.35 : 0;
+    // faint: you read shapes by moonlight, you do not work by it
+    this.moon.intensity = isNight() ? (G.redMoon && G.redMoon.active ? 0.22 : 0.15) : 0;
 
     // the celestial bodies ride their arcs
     const sunDir = new THREE.Vector3(Math.cos(sunA) * 120, Math.max(2, se * 140), 40).normalize();
@@ -830,14 +1093,27 @@ export class World {
       cf.lerp(new THREE.Color(0x30090d), 0.85);
       this.moon.color.setHex(0xc03030);
     } else {
-      this.moon.color.setHex(0x8899cc);
+      this.moon.color.setHex(0x7488b8);
     }
     G.scene.background.copy(cs);
     G.scene.fog.color.copy(cf);
-    G.scene.fog.near = isNight() ? 28 : 60;
-    G.scene.fog.far = isNight() ? 150 : 320;
+    // visibility itself follows the clock: night closes in around you
+    G.scene.fog.near = a.fogN + (b.fogN - a.fogN) * f;
+    G.scene.fog.far = a.fogF + (b.fogF - a.fogF) * f;
     G.sun.intensity = a.sun + (b.sun - a.sun) * f;
+    G.sun.color.copy(new THREE.Color(a.sunC).lerp(new THREE.Color(b.sunC), f));
     G.hemi.intensity = a.hemi + (b.hemi - a.hemi) * f;
-    this.banditFire.intensity = isNight() ? 9 : 2;
+    // fires flicker — every flame has its own nervous rhythm
+    const fnow = performance.now() * 0.001;
+    this.banditFire.intensity = (isNight() ? 9 : 2) *
+      (0.88 + 0.09 * Math.sin(fnow * 11.3) + 0.05 * Math.sin(fnow * 27.1));
+    // the road lanterns are lit at dark: two small promises of home
+    if (this.lanternLights) {
+      const on = isNight() || t < 0.24 || t > 0.74;
+      for (const L of this.lanternLights) {
+        L.light.intensity = on ? 6 * (0.9 + 0.08 * Math.sin(fnow * 9.7 + L.phase)) : 0;
+        L.box.material.color.setHex(on ? 0xffb655 : 0x6a5a44);
+      }
+    }
   }
 }

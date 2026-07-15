@@ -16,6 +16,21 @@ import { sfx } from './audio.js';
 const MODULAR = ['foundation', 'wallpiece', 'windowwall', 'doorpiece'];
 const SUPPORTS = ['foundation', 'wallpiece', 'windowwall', 'doorpiece', 'gate'];
 
+// The settlement's colors: a worn blue banner with a pale device. Flown at the
+// gate and the watchtower (fortifications board: "banners show your kingdom's
+// colors"). Cloth is boxes; the wear is in the palette, not the polycount.
+const BANNER_CLOTH = new THREE.MeshLambertMaterial({ color: 0x2a3a56 });
+const BANNER_MARK = new THREE.MeshLambertMaterial({ color: 0xb8ad8a });
+function kingdomBanner(g, x, y, z, extraPole = 0) {
+  if (extraPole > 0) cyl(g, 0.05, 0.06, extraPole + 0.4, 5, MAT.beam, x, y + extraPole / 2 - 0.2, z);
+  const top = y + extraPole;
+  bx(g, 0.55, 0.08, 0.08, MAT.beam, x, top, z);              // crossarm
+  bx(g, 0.44, 1.05, 0.035, BANNER_CLOTH, x, top - 0.58, z);  // the cloth
+  bx(g, 0.44, 0.22, 0.045, BANNER_MARK, x, top - 0.42, z);   // the pale device
+  bx(g, 0.16, 0.3, 0.045, BANNER_CLOTH, x - 0.14, top - 1.22, z, 0, 0.18); // ragged tails
+  bx(g, 0.16, 0.24, 0.045, BANNER_CLOTH, x + 0.14, top - 1.2, z, 0, -0.14);
+}
+
 export const CROPS = {
   corn:    { name: 'Corn',    color: 0xc8b93a, tall: 1.0, yield: 4, growTime: 100 },
   cabbage: { name: 'Cabbage', color: 0x5a8a3a, tall: 0.45, yield: 4, growTime: 80 },
@@ -118,6 +133,9 @@ export const BUILDING_DEFS = {
       };
       g.userData.doorL = mkLeaf(-1);
       g.userData.doorR = mkLeaf(1);
+      // fortifications board: banners show the settlement's colors at the gate
+      kingdomBanner(g, -1.9, 3.3, 0.25);
+      kingdomBanner(g, 1.9, 3.3, 0.25);
       return g;
     },
   },
@@ -145,6 +163,8 @@ export const BUILDING_DEFS = {
       bx(g, 0.08, 4.4, 0.08, MAT.beamLight, 0.25, 2.2, 0.95, 0, 0, 0.1);
       for (let i = 0; i < 7; i++)
         bx(g, 0.58, 0.06, 0.06, MAT.beamLight, 0, 0.5 + i * 0.6, 0.95 + (0.5 + i * 0.6) * -0.1 + 0.22);
+      // the tower flies the settlement's banner — visible from the fields
+      kingdomBanner(g, 1.1, 5.0, -1.1, 1.3);
       return g;
     },
   },
@@ -235,6 +255,19 @@ export const BUILDING_DEFS = {
         f.rotation.y = rot; f.position.set(x, 0, z);
         g.add(f);
       }
+      // farm-plot board dressing: scarecrow, water barrel, leaning tools
+      const scare = new THREE.Group();
+      bx(scare, 0.1, 1.6, 0.1, MAT.beam, 0, 0.8, 0);        // post
+      bx(scare, 1.0, 0.1, 0.1, MAT.beam, 0, 1.25, 0);       // arms
+      bx(scare, 0.42, 0.5, 0.3, new THREE.MeshLambertMaterial({ color: 0x5a5040 }), 0, 1.1, 0); // ragged coat
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 5),
+        new THREE.MeshLambertMaterial({ color: 0xb8a06a }));
+      head.position.y = 1.62; scare.add(head);
+      scare.position.set(1.6, 0, 1.6);
+      scare.rotation.y = 0.6;
+      g.add(scare);
+      cyl(g, 0.28, 0.32, 0.55, 8, MAT.beamLight, -1.9, 0.28, 1.9);   // water barrel
+      bx(g, 0.07, 1.3, 0.07, MAT.beam, -1.7, 0.6, 2.1, 0, 0, 0.4);  // hoe against the fence
       g.userData.crops = crops;
       return g;
     },
@@ -511,12 +544,18 @@ export class Building {
       }
       this._fireFX.scale.setScalar(0.4 + this.fire);
     }
-    // torch / campfire light
+    // torch / campfire light — each flame flickers to its own nervous rhythm
+    // (lighting bible: flicker intensity varies per source; torches gutter
+    // harder in the open than a banked campfire)
     const light = this.mesh.userData.light;
     if (light) {
-      light.intensity = isNight() ? (this.type === 'torch' ? 10 : 12) : 1.5;
+      const base = isNight() ? (this.type === 'torch' ? 10 : 12) : 1.2;
+      const tn = performance.now() * 0.001, ph = this.id * 2.7;
+      const gutter = this.type === 'torch' ? 1.0 : 0.55;
+      light.intensity = base * (0.88 +
+        gutter * (0.08 * Math.sin(tn * 12.7 + ph) + 0.05 * Math.sin(tn * 31.9 + ph * 1.7)));
       const f = this.mesh.userData.flame;
-      if (f) f.scale.setScalar(0.9 + Math.sin(performance.now() * 0.01 + this.id) * 0.15);
+      if (f) f.scale.setScalar(0.88 + 0.1 * Math.sin(tn * 10 + ph) + 0.05 * Math.sin(tn * 23 + ph));
     }
     // farm crop growth & visuals
     if (this.type === 'farm') {

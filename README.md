@@ -159,6 +159,30 @@ while **one guard investigates** and the rest hold coverage.
 The far north belongs to the **White Werewolf**. It hunts the weak, feeds, and
 withdraws — enter the monolith ring at your peril.
 
+## Art direction (the bases)
+
+**Light is precious.** The world runs cool and desaturated — warmth belongs to fire
+alone. The day cycle is a data-driven color script: a soft, uncertain dawn; a neutral
+day that feels harsh rather than kind; a dusk where a warm horizon burns against cool
+shadows; and a deep-blue night where visibility itself closes in and the only safety
+is the flickering pool of a torch — every flame gutters to its own rhythm. Moonlight
+shows you shapes, never work. Under a Red Moon, everything bleeds.
+
+**The forest is ancient, wild, and unforgiving.** No two trees share a color —
+per-instance tinting varies every trunk and canopy; deep-forest pines grow taller and
+darker (the spruce), birches crowd the lake shores, saplings layer the understory,
+and grass grows in natural clumped patches per biome: short field grass in the
+settlement, tall meadow grass in the open, dark forest floor, dry hill tufts.
+Mushrooms fruit where the dead wood is, and **cursed trees** — twisted, dark-barked,
+hung with pale growths — ring the ruins and the werewolf's ground.
+
+**Everything is worn.** The King's Road carries wheel ruts, gravel patches, leaning
+mile markers, and a broken cart nobody came back for; lantern posts flank the
+settlement turn-off and light at dark. Farm plots have fences, furrows, a scarecrow,
+and tools against the rail. The gate and watchtower fly the settlement's ragged blue
+banner. Professions read from silhouette: the woodcutter's axe and stonecutter's
+pick never leave their hands, and sword-guards sling a round shield across the back.
+
 ## The world
 
 The valley is walled in by the **Grey Peaks** — a mountain ring that climbs to bare

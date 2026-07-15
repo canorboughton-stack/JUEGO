@@ -21,6 +21,44 @@ const TUNICS = [0x8a8070, 0x7a6a52, 0x6e7a5a, 0x8a6a5a, 0x6a6a7a, 0x9a8a6a];
 const HAIRS = [0x4a3320, 0x2e2318, 0x6e5a3a, 0x8a7a5a, 0x3a3a3a];
 const pick = arr => arr[Math.floor(Math.random() * arr.length)];
 
+// Villager board: "tools are always visible." A profession is read at a
+// glance from the silhouette, not from a nameplate.
+const TOOL_WOOD = new THREE.MeshLambertMaterial({ color: 0x5a4228 });
+const TOOL_IRON = new THREE.MeshLambertMaterial({ color: 0x7c828c });
+function addAxeTool(armPivot) {
+  const haft = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.85, 0.07), TOOL_WOOD);
+  haft.position.set(0, -0.85, 0.12);
+  armPivot.add(haft);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.2, 0.3), TOOL_IRON);
+  head.position.set(0, -1.15, 0.22);
+  armPivot.add(head);
+}
+function addPickTool(armPivot) {
+  const haft = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.85, 0.07), TOOL_WOOD);
+  haft.position.set(0, -0.85, 0.12);
+  armPivot.add(haft);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.55), TOOL_IRON);
+  head.position.set(0, -1.18, 0.12);
+  head.rotation.x = 0.1;
+  armPivot.add(head);
+}
+// guards board: a round wooden shield slung on the back marks the sentinel
+function addBackShield(group, heightScale = 1) {
+  const shield = new THREE.Group();
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.07, 10),
+    new THREE.MeshLambertMaterial({ color: 0x5c4a34 }));
+  disc.rotation.x = Math.PI / 2;
+  shield.add(disc);
+  const boss = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.1, 8), TOOL_IRON);
+  boss.rotation.x = Math.PI / 2;
+  boss.position.z = -0.06;
+  shield.add(boss);
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.035, 5, 12), TOOL_IRON);
+  shield.add(rim);
+  shield.position.set(0, 1.32 * heightScale, -0.34);
+  group.add(shield);
+}
+
 // ---------- personality traits (brief §2): one primary trait per villager ----------
 export const TRAITS = {
   brave:       { bravery: 0.88, fleeR: 8,  social: 1.0, eff: 1.0,
@@ -236,19 +274,24 @@ export class Villager {
       // padded jacket, leather reinforcement, practical helmet — no parade armor
       this.fig = makeCharacter({ tunic: 0x4a5568, skin: 0xc9a07a, hat: 'helm',
         pants: 0x3a3f4a, reinforced: true, pouch: true, ...sil });
-      if (this.weapon !== 'bow') addSword(this.fig.armPivot, 0x8a909c, 0.7);
+      if (this.weapon !== 'bow') {
+        addSword(this.fig.armPivot, 0x8a909c, 0.7);
+        addBackShield(this.fig.group, this.heightScale); // sentinel silhouette
+      }
     } else if (this.role === 'farmer') {
       // work apron, rolled-sleeve look, straw hat, utility pouch
       this.fig = makeCharacter({ tunic: 0x7a6a3a, skin: 0xc9a07a, hat: 'straw',
         hair: this.hair, apron: true, pouch: true, ...sil });
     } else if (this.role === 'woodcutter') {
-      // heavy forest browns, hood down the trail, big carry pouch
+      // heavy forest browns, hood down the trail, axe never leaves the hand
       this.fig = makeCharacter({ tunic: 0x6a4a2e, skin: 0xc9a07a, hat: 'hood',
         hatColor: 0x4a3a26, pants: 0x453424, pouch: true, reinforced: true, ...sil });
+      addAxeTool(this.fig.armPivot);
     } else if (this.role === 'stonecutter') {
-      // dusted greys, tied-back hair, work pouch
+      // dusted greys, tied-back hair, pick over the shoulder
       this.fig = makeCharacter({ tunic: 0x5c6068, skin: 0xc9a07a,
         hair: this.hair, pants: 0x45484e, apron: true, pouch: true, ...sil });
+      addPickTool(this.fig.armPivot);
     } else {
       this.fig = makeCharacter({ tunic: this.tunic, skin: 0xc9a07a, hair: this.hair,
         pouch: Math.random() < 0.5, ...sil });
