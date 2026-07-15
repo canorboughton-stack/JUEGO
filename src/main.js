@@ -100,6 +100,7 @@ function saveGame() {
       day: G.day, time: G.time, stage: G.stage, taxes: G.taxes,
       redMoon: G.redMoon,
       banditCamp: G.banditCamp,
+      ruinsRelic: G.ruinsRelic,
       weapon: G.player.weapon,
       tamed: G.tamed.filter(t => !t.dead).map(t => ({
         type: t.type, name: t.name, hp: t.hp, trust: t.trust, role: t.role,
@@ -155,6 +156,7 @@ function loadGame() {
     Object.assign(G.taxes, d.taxes || {});
     if (d.redMoon) Object.assign(G.redMoon, d.redMoon);
     if (d.banditCamp) Object.assign(G.banditCamp, d.banditCamp);
+    if (d.ruinsRelic) Object.assign(G.ruinsRelic, d.ruinsRelic);
     if (d.weapon) { G.player.weapon = d.weapon; }
     Object.assign(G.playerInv, d.playerInv || {});
     G.werewolfSlain = !!d.werewolfSlain;

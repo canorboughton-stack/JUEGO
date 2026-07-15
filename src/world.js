@@ -1,4 +1,6 @@
-// World: handcrafted map layout, terrain, vegetation, ruins, lighting, day/night.
+// World: handcrafted map, biomes, terrain, vegetation, lakes, mountains, ruins,
+// lighting, sun/moon/stars, day/night. The map should feel lived-in: every few
+// minutes of walking, something meaningful (bible: world design).
 import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, isNight } from './state.js';
 import { playerAdd } from './storage.js';
@@ -9,8 +11,11 @@ const MAP = 400; // world is MAP x MAP centered at origin
 // Village clearing  : (0, 0)
 // King's Road       : east-west band at z = 40
 // Dark Forest       : east   (x 40..190, z -90..25)
+// Southwood pines   : south  (z 60..170)
 // Rocky Hills       : west   (x -190..-40, z -70..35)
-// Cursed Ruins      : (110, -120) r 34
+// Grey Peaks        : mountain ring at the map's edge
+// Lakes             : Mirror Lake (60,95), Blackwater (120,-35), Reedmere (-70,110)
+// Cursed Ruins      : (110, -120) r 34 — now a monster den with a reliquary
 // Bandit Camp       : (-110, -115) r 26
 // Hunting Grounds   : far north strip z < -150 (the White Werewolf)
 export const POI = {
@@ -21,6 +26,12 @@ export const POI = {
   roadZ: 40,
 };
 
+export const LAKES = [
+  { x: 60, z: 95, r: 18, name: 'Mirror Lake' },
+  { x: 120, z: -35, r: 13, name: 'Blackwater' },
+  { x: -70, z: 110, r: 15, name: 'Reedmere' },
+];
+
 function smooth(a, b, v) { return clamp((v - a) / (b - a), 0, 1); }
 
 export function terrainHeight(x, z) {
@@ -28,12 +39,26 @@ export function terrainHeight(x, z) {
         + 1.5 * Math.sin(x * 0.052 + 2.3) * Math.cos(z * 0.047 + 1.1)
         + 0.6 * Math.sin(x * 0.11 + 0.5) * Math.sin(z * 0.13 + 2.0);
   h += Math.max(0, (-z - 120) * 0.035);           // rise toward the cursed north
+  // the Grey Peaks: a mountain ring walls the world in
+  const edge = Math.max(Math.abs(x), Math.abs(z));
+  h += Math.pow(smooth(160, 196, edge), 2) * 24 * (0.75 + 0.25 * Math.sin(x * 0.07 + z * 0.06));
+  // western highlands shoulder the hills
+  h += Math.pow(smooth(-135, -185, x), 2) * 10 * (0.6 + 0.4 * Math.sin(z * 0.045));
   const dv = Math.hypot(x, z);
   h *= 0.08 + 0.92 * smooth(16, 52, dv);          // flatten village clearing
   h *= 0.15 + 0.85 * smooth(2.5, 9, Math.abs(z - POI.roadZ)); // flatten the road
   h *= 0.2 + 0.8 * smooth(6, 20, dist2d(x, z, POI.ruins.x, POI.ruins.z) - 14);
   h *= 0.2 + 0.8 * smooth(4, 14, dist2d(x, z, POI.banditCamp.x, POI.banditCamp.z) - 10);
+  // lake basins sink below the waterline
+  for (const L of LAKES) {
+    const t = smooth(L.r, L.r * 0.3, dist2d(x, z, L.x, L.z));
+    h = h * (1 - t) + (-2.6) * t;
+  }
   return h;
+}
+
+export function inLake(x, z) {
+  return LAKES.some(L => dist2d(x, z, L.x, L.z) < L.r);
 }
 
 export function zoneAt(x, z) {
@@ -43,12 +68,19 @@ export function zoneAt(x, z) {
     return { name: 'THE CURSED RUINS', sub: 'The dead do not rest in these stones.' };
   if (dist2d(x, z, POI.banditCamp.x, POI.banditCamp.z) < POI.banditCamp.r)
     return { name: 'BANDIT CAMP', sub: 'Outlaws watch from the tents.' };
+  for (const L of LAKES)
+    if (dist2d(x, z, L.x, L.z) < L.r + 6)
+      return { name: L.name.toUpperCase(), sub: 'Still water. Keep your reflection to yourself.' };
+  if (Math.max(Math.abs(x), Math.abs(z)) > 162)
+    return { name: 'THE GREY PEAKS', sub: 'The mountains wall the world in.' };
   if (Math.hypot(x, z) < POI.village.r)
     return { name: 'THE SETTLEMENT', sub: 'Home. Keep it standing.' };
   if (Math.abs(z - POI.roadZ) < 8)
     return { name: "THE KING'S ROAD", sub: 'Merchants and wanderers pass through.' };
   if (x > 40 && z > -95 && z < 28)
     return { name: 'THE DARK FOREST', sub: 'Timber is plentiful. So are the wolves.' };
+  if (z > 60 && Math.abs(x) < 160)
+    return { name: 'THE SOUTHWOOD', sub: 'Endless pines. Easy to lose the road.' };
   if (x < -40 && z > -75 && z < 38)
     return { name: 'THE ROCKY HILLS', sub: 'Stone for walls. Boars in the brush.' };
   if (z < -90)
@@ -56,105 +88,219 @@ export function zoneAt(x, z) {
   return { name: 'THE FRONTIER', sub: 'Untamed wilderness.' };
 }
 
+// spots trees/rocks/props must avoid
+function badSpot(x, z, extra = 0) {
+  if (Math.hypot(x, z) < 34 + extra) return true;
+  if (Math.abs(z - POI.roadZ) < 9) return true;
+  if (dist2d(x, z, POI.ruins.x, POI.ruins.z) < POI.ruins.r) return true;
+  if (dist2d(x, z, POI.banditCamp.x, POI.banditCamp.z) < POI.banditCamp.r) return true;
+  if (LAKES.some(L => dist2d(x, z, L.x, L.z) < L.r + 3)) return true;
+  if (terrainHeight(x, z) > 11) return true; // no trees on bare peaks
+  return false;
+}
+
 export class World {
   constructor() {
     this.h = terrainHeight;
-    this.trees = [];  // {x,z,alive,respawn}
+    this.trees = [];  // {x,z,alive,respawn,s,kind,idx}
     this.rocks = [];
     this.bushes = [];
     this.herbs = [];
     this._buildTerrain();
+    this._buildLakes();
     this._buildVegetation();
     this._buildRuins();
     this._buildBanditCamp();
     this._buildDen();
     this._buildRoadProps();
     this._buildLights();
-    this._skyTop = new THREE.Color();
+    this._buildSky();
   }
 
   // ---------- terrain ----------
   _buildTerrain() {
-    const seg = 140;
+    const seg = 150;
     const geo = new THREE.PlaneGeometry(MAP, MAP, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
     const cGrass = new THREE.Color(0x3d5a2a), cDry = new THREE.Color(0x5a5f38),
           cRoad = new THREE.Color(0x6e5b41), cRuin = new THREE.Color(0x565661),
-          cSnow = new THREE.Color(0x9aa3ad), cVill = new THREE.Color(0x4a6b33);
+          cSnow = new THREE.Color(0x9aa3ad), cVill = new THREE.Color(0x4a6b33),
+          cForest = new THREE.Color(0x2e4a22), cRock = new THREE.Color(0x6e6f76),
+          cPeakSnow = new THREE.Color(0xdfe6ec), cSand = new THREE.Color(0x8a7f5e),
+          cLakebed = new THREE.Color(0x3a4a42);
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
-      pos.setY(i, terrainHeight(x, z));
+      const h = terrainHeight(x, z);
+      pos.setY(i, h);
       c.copy(cGrass);
       const n = Math.sin(x * 0.31 + z * 0.17) * Math.sin(x * 0.05 - z * 0.11);
       c.lerp(cDry, 0.25 + n * 0.25);
+      // forest floors are darker, needled
+      if (x > 40 && z > -95 && z < 28) c.lerp(cForest, 0.55);
+      if (z > 60 && Math.abs(x) < 160) c.lerp(cForest, 0.45);
       if (Math.hypot(x, z) < POI.village.r) c.lerp(cVill, 0.5);
       if (dist2d(x, z, POI.ruins.x, POI.ruins.z) < POI.ruins.r) c.lerp(cRuin, 0.75);
       if (dist2d(x, z, POI.banditCamp.x, POI.banditCamp.z) < POI.banditCamp.r) c.lerp(cDry, 0.6);
       c.lerp(cSnow, smooth(-130, -175, z));                 // pale cursed north
+      // mountain rock and snowcaps by altitude
+      c.lerp(cRock, smooth(9, 15, h));
+      c.lerp(cPeakSnow, smooth(17, 23, h));
+      // lake shores and beds
+      for (const L of LAKES) {
+        const d = dist2d(x, z, L.x, L.z);
+        if (d < L.r + 4) {
+          c.lerp(cSand, smooth(L.r + 4, L.r - 1, d) * 0.8);
+          c.lerp(cLakebed, smooth(L.r - 2, L.r * 0.4, d));
+        }
+      }
       c.lerp(cRoad, 1 - smooth(2.5, 5.5, Math.abs(z - POI.roadZ))); // road strip
       colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-    const mesh = new THREE.Mesh(geo, mat);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
     mesh.receiveShadow = true;
     G.scene.add(mesh);
   }
 
-  // ---------- vegetation (instanced) ----------
+  // ---------- lakes: still water, reeds on the banks ----------
+  _buildLakes() {
+    this.waters = [];
+    const reedMat = new THREE.MeshLambertMaterial({ color: 0x4a6a3a });
+    for (const L of LAKES) {
+      const water = new THREE.Mesh(
+        new THREE.CircleGeometry(L.r, 26),
+        new THREE.MeshLambertMaterial({ color: 0x2e5a6e, transparent: true, opacity: 0.78 }));
+      water.rotation.x = -Math.PI / 2;
+      water.position.set(L.x, -0.55, L.z);
+      G.scene.add(water);
+      this.waters.push(water);
+      // reeds ring the shore
+      for (let i = 0; i < 22; i++) {
+        const a = (i / 22) * Math.PI * 2 + Math.random() * 0.2;
+        const d = L.r + 0.5 + Math.random() * 2;
+        const rx = L.x + Math.cos(a) * d, rz = L.z + Math.sin(a) * d;
+        const reed = new THREE.Mesh(new THREE.ConeGeometry(0.08, 1.4 + Math.random() * 0.8, 4), reedMat);
+        reed.position.set(rx, terrainHeight(rx, rz) + 0.6, rz);
+        reed.rotation.z = (Math.random() - 0.5) * 0.2;
+        G.scene.add(reed);
+      }
+    }
+  }
+
+  // ---------- vegetation: three tree species, all timber ----------
   _buildVegetation() {
     const dummy = new THREE.Object3D();
-    // Trees: dense in forest, sparse elsewhere, dead in the north
-    const treeSpots = [];
-    for (let i = 0; i < 220; i++) {
-      const inForest = i < 150;
-      let x, z, tries = 0;
-      do {
-        if (inForest) { x = 42 + Math.random() * 145; z = -92 + Math.random() * 115; }
-        else { x = -195 + Math.random() * 390; z = -195 + Math.random() * 390; }
-        tries++;
-      } while (tries < 12 && (Math.hypot(x, z) < 34 || Math.abs(z - POI.roadZ) < 9
-               || dist2d(x, z, POI.ruins.x, POI.ruins.z) < POI.ruins.r
-               || dist2d(x, z, POI.banditCamp.x, POI.banditCamp.z) < POI.banditCamp.r));
-      if (tries >= 12) continue;
-      treeSpots.push({ x, z, dead: z < -145 });
-    }
-    const trunkGeo = new THREE.CylinderGeometry(0.28, 0.42, 3.2, 6);
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3421 });
-    const leafGeo = new THREE.ConeGeometry(1.9, 4.4, 7);
-    const leafMat = new THREE.MeshLambertMaterial({ color: 0x2a4520 });
-    this.trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, treeSpots.length);
-    this.leafIM = new THREE.InstancedMesh(leafGeo, leafMat, treeSpots.length);
-    this.trunkIM.castShadow = this.leafIM.castShadow = true;
-    treeSpots.forEach((t, i) => {
+
+    // gather spots per species. The world reads forest-first.
+    const pines = [], oaks = [], birches = [];
+    const scatter = (n, gen, arr) => {
+      for (let i = 0; i < n; i++) {
+        const [x, z] = gen();
+        if (x === null || badSpot(x, z)) continue;
+        arr.push({ x, z });
+      }
+    };
+    // dark forest east: dense pine + oak mix
+    scatter(190, () => [42 + Math.random() * 145, -92 + Math.random() * 115], pines);
+    scatter(55, () => [45 + Math.random() * 130, -85 + Math.random() * 105], oaks);
+    // the Southwood: a true pine belt south of the road
+    scatter(150, () => [-160 + Math.random() * 320, 62 + Math.random() * 105], pines);
+    scatter(35, () => [-150 + Math.random() * 300, 65 + Math.random() * 95], birches);
+    // meadow and hill scatter
+    scatter(45, () => [-195 + Math.random() * 390, -195 + Math.random() * 390], oaks);
+    scatter(40, () => [-195 + Math.random() * 390, -195 + Math.random() * 390], birches);
+    // dead pines in the cursed north
+    const deadPines = [];
+    scatter(30, () => [-150 + Math.random() * 300, -190 + Math.random() * 45], deadPines);
+
+    // --- pines (cone canopy) ---
+    const pineTrunkGeo = new THREE.CylinderGeometry(0.28, 0.42, 3.2, 6);
+    const pineTrunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3421 });
+    const pineLeafGeo = new THREE.ConeGeometry(1.9, 4.6, 7);
+    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0x2a4520 });
+    const allPines = [...pines.map(p => ({ ...p, dead: false })),
+                      ...deadPines.map(p => ({ ...p, dead: true }))];
+    this.pineTrunkIM = new THREE.InstancedMesh(pineTrunkGeo, pineTrunkMat, allPines.length);
+    this.pineLeafIM = new THREE.InstancedMesh(pineLeafGeo, pineLeafMat, allPines.length);
+    this.pineTrunkIM.castShadow = this.pineLeafIM.castShadow = true;
+    allPines.forEach((t, i) => {
       const y = terrainHeight(t.x, t.z);
-      const s = 0.8 + Math.random() * 0.6;
+      const s = 0.8 + Math.random() * 0.7;
       dummy.position.set(t.x, y + 1.6 * s, t.z);
       dummy.scale.setScalar(s); dummy.rotation.y = Math.random() * 6.28;
       dummy.updateMatrix();
-      this.trunkIM.setMatrixAt(i, dummy.matrix);
-      if (t.dead) dummy.scale.setScalar(0.001); // dead trees: trunk only
-      else { dummy.position.y = y + 4.6 * s; }
+      this.pineTrunkIM.setMatrixAt(i, dummy.matrix);
+      if (t.dead) dummy.scale.setScalar(0.001);
+      else dummy.position.y = y + 4.8 * s;
       dummy.updateMatrix();
-      this.leafIM.setMatrixAt(i, dummy.matrix);
-      this.trees.push({ x: t.x, z: t.z, alive: true, respawn: 0, s, dead: t.dead });
+      this.pineLeafIM.setMatrixAt(i, dummy.matrix);
+      this.trees.push({ x: t.x, z: t.z, alive: true, respawn: 0, s, kind: 'pine', idx: i, dead: t.dead });
       G.colliders.push({ x: t.x, z: t.z, r: 0.55, owner: null });
     });
-    G.scene.add(this.trunkIM, this.leafIM);
+    G.scene.add(this.pineTrunkIM, this.pineLeafIM);
 
-    // Rocks: hills + scattered
+    // --- oaks (round canopy) ---
+    const oakTrunkGeo = new THREE.CylinderGeometry(0.34, 0.5, 2.6, 6);
+    const oakTrunkMat = new THREE.MeshLambertMaterial({ color: 0x54402a });
+    const oakLeafGeo = new THREE.SphereGeometry(2.1, 7, 6);
+    const oakLeafMat = new THREE.MeshLambertMaterial({ color: 0x3e5c26 });
+    this.oakTrunkIM = new THREE.InstancedMesh(oakTrunkGeo, oakTrunkMat, oaks.length);
+    this.oakLeafIM = new THREE.InstancedMesh(oakLeafGeo, oakLeafMat, oaks.length);
+    this.oakTrunkIM.castShadow = this.oakLeafIM.castShadow = true;
+    oaks.forEach((t, i) => {
+      const y = terrainHeight(t.x, t.z);
+      const s = 0.9 + Math.random() * 0.6;
+      dummy.position.set(t.x, y + 1.3 * s, t.z);
+      dummy.scale.setScalar(s); dummy.rotation.y = Math.random() * 6.28;
+      dummy.updateMatrix();
+      this.oakTrunkIM.setMatrixAt(i, dummy.matrix);
+      dummy.position.y = y + 3.4 * s;
+      dummy.scale.set(s, s * 0.8, s);
+      dummy.updateMatrix();
+      this.oakLeafIM.setMatrixAt(i, dummy.matrix);
+      this.trees.push({ x: t.x, z: t.z, alive: true, respawn: 0, s, kind: 'oak', idx: i });
+      G.colliders.push({ x: t.x, z: t.z, r: 0.6, owner: null });
+    });
+    G.scene.add(this.oakTrunkIM, this.oakLeafIM);
+
+    // --- birches (pale slender trunks) ---
+    const birchTrunkGeo = new THREE.CylinderGeometry(0.14, 0.2, 4.2, 6);
+    const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xd8d4c4 });
+    const birchLeafGeo = new THREE.SphereGeometry(1.3, 6, 5);
+    const birchLeafMat = new THREE.MeshLambertMaterial({ color: 0x6a8a38 });
+    this.birchTrunkIM = new THREE.InstancedMesh(birchTrunkGeo, birchTrunkMat, birches.length);
+    this.birchLeafIM = new THREE.InstancedMesh(birchLeafGeo, birchLeafMat, birches.length);
+    this.birchTrunkIM.castShadow = this.birchLeafIM.castShadow = true;
+    birches.forEach((t, i) => {
+      const y = terrainHeight(t.x, t.z);
+      const s = 0.85 + Math.random() * 0.5;
+      dummy.position.set(t.x, y + 2.1 * s, t.z);
+      dummy.scale.setScalar(s); dummy.rotation.y = Math.random() * 6.28;
+      dummy.updateMatrix();
+      this.birchTrunkIM.setMatrixAt(i, dummy.matrix);
+      dummy.position.y = y + 4.4 * s;
+      dummy.scale.set(s, s * 1.25, s);
+      dummy.updateMatrix();
+      this.birchLeafIM.setMatrixAt(i, dummy.matrix);
+      this.trees.push({ x: t.x, z: t.z, alive: true, respawn: 0, s, kind: 'birch', idx: i });
+      G.colliders.push({ x: t.x, z: t.z, r: 0.4, owner: null });
+    });
+    G.scene.add(this.birchTrunkIM, this.birchLeafIM);
+
+    // --- rocks: hills + scattered ---
     const rockGeo = new THREE.DodecahedronGeometry(1.15, 0);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x77787f, flatShading: true });
     const rockSpots = [];
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 95; i++) {
       let x, z;
       if (i < 60) { x = -185 + Math.random() * 140; z = -70 + Math.random() * 100; }
       else { x = -195 + Math.random() * 390; z = -195 + Math.random() * 390; }
       if (Math.hypot(x, z) < 30 || Math.abs(z - POI.roadZ) < 7) continue;
+      if (LAKES.some(L => dist2d(x, z, L.x, L.z) < L.r + 2)) continue;
       rockSpots.push({ x, z });
     }
     this.rockIM = new THREE.InstancedMesh(rockGeo, rockMat, rockSpots.length);
@@ -171,14 +317,14 @@ export class World {
     });
     G.scene.add(this.rockIM);
 
-    // Berry bushes: meadows near the village & forest edge
+    // --- berry bushes ---
     const bushGeo = new THREE.SphereGeometry(0.75, 7, 5);
     const bushMat = new THREE.MeshLambertMaterial({ color: 0x35682d });
     const bushSpots = [];
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < 50; i++) {
       const a = Math.random() * 6.28, d = 30 + Math.random() * 55;
       const x = Math.cos(a) * d, z = Math.sin(a) * d * 0.8 + 10;
-      if (Math.abs(z - POI.roadZ) < 6) continue;
+      if (Math.abs(z - POI.roadZ) < 6 || inLake(x, z)) continue;
       bushSpots.push({ x, z });
     }
     this.bushIM = new THREE.InstancedMesh(bushGeo, bushMat, bushSpots.length);
@@ -191,15 +337,14 @@ export class World {
     });
     G.scene.add(this.bushIM);
 
-    // Herb patches: pale flowering plants in meadows and forest fringes —
-    // the raw material for incense and future medicine (loop bible §Resources)
+    // --- herb patches ---
     const herbGeo = new THREE.ConeGeometry(0.35, 0.75, 5);
     const herbMat = new THREE.MeshLambertMaterial({ color: 0x7fa86a });
     const herbSpots = [];
-    for (let i = 0; i < 42; i++) {
-      const a = Math.random() * 6.28, d = 35 + Math.random() * 80;
+    for (let i = 0; i < 46; i++) {
+      const a = Math.random() * 6.28, d = 35 + Math.random() * 90;
       const x = Math.cos(a) * d, z = Math.sin(a) * d * 0.9 + 5;
-      if (Math.abs(z - POI.roadZ) < 6 || Math.hypot(x, z) < 25) continue;
+      if (badSpot(x, z)) continue;
       herbSpots.push({ x, z });
     }
     this.herbIM = new THREE.InstancedMesh(herbGeo, herbMat, herbSpots.length);
@@ -211,6 +356,41 @@ export class World {
       this.herbs.push({ x: h.x, z: h.z, alive: true, respawn: 0 });
     });
     G.scene.add(this.herbIM);
+
+    // --- ferns & undergrowth: pure ground cover, the forest floor lives ---
+    const fernGeo = new THREE.ConeGeometry(0.5, 0.55, 5);
+    const fernMat = new THREE.MeshLambertMaterial({ color: 0x38542c });
+    const fernSpots = [];
+    for (let i = 0; i < 340; i++) {
+      let x, z;
+      if (i < 160) { x = 42 + Math.random() * 145; z = -92 + Math.random() * 115; }
+      else if (i < 280) { x = -160 + Math.random() * 320; z = 62 + Math.random() * 105; }
+      else { x = -195 + Math.random() * 390; z = -195 + Math.random() * 390; }
+      if (badSpot(x, z)) continue;
+      fernSpots.push({ x, z });
+    }
+    const fernIM = new THREE.InstancedMesh(fernGeo, fernMat, fernSpots.length);
+    fernSpots.forEach((f, i) => {
+      dummy.position.set(f.x, terrainHeight(f.x, f.z) + 0.22, f.z);
+      const s = 0.6 + Math.random() * 0.9;
+      dummy.scale.set(s * 1.4, s * 0.6, s * 1.4);
+      dummy.rotation.set(0, Math.random() * 6, 0);
+      dummy.updateMatrix();
+      fernIM.setMatrixAt(i, dummy.matrix);
+    });
+    G.scene.add(fernIM);
+
+    // fallen logs in the deep woods — old timber, older stories
+    const logMat = new THREE.MeshLambertMaterial({ color: 0x4e3a26 });
+    for (let i = 0; i < 14; i++) {
+      const x = 50 + Math.random() * 130, z = -85 + Math.random() * 100 * (i % 2 ? 1 : -0.3);
+      if (badSpot(x, z)) continue;
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.36, 2.6 + Math.random() * 1.6, 6), logMat);
+      log.position.set(x, terrainHeight(x, z) + 0.3, z);
+      log.rotation.set(0, Math.random() * 3, Math.PI / 2 + (Math.random() - 0.5) * 0.2);
+      log.castShadow = true;
+      G.scene.add(log);
+    }
   }
 
   _hideInstance(im, i) {
@@ -218,13 +398,31 @@ export class World {
     im.setMatrixAt(i, m);
     im.instanceMatrix.needsUpdate = true;
   }
-  _restoreTree(i) {
-    const t = this.trees[i], dummy = new THREE.Object3D();
+
+  _treeIMs(kind) {
+    return kind === 'pine' ? [this.pineTrunkIM, this.pineLeafIM]
+      : kind === 'oak' ? [this.oakTrunkIM, this.oakLeafIM]
+      : [this.birchTrunkIM, this.birchLeafIM];
+  }
+
+  _restoreTree(ti) {
+    const t = this.trees[ti], dummy = new THREE.Object3D();
+    const [trunkIM, leafIM] = this._treeIMs(t.kind);
     const y = terrainHeight(t.x, t.z);
-    dummy.position.set(t.x, y + 1.6 * t.s, t.z); dummy.scale.setScalar(t.s);
-    dummy.updateMatrix(); this.trunkIM.setMatrixAt(i, dummy.matrix);
-    if (!t.dead) { dummy.position.y = y + 4.6 * t.s; dummy.updateMatrix(); this.leafIM.setMatrixAt(i, dummy.matrix); }
-    this.trunkIM.instanceMatrix.needsUpdate = this.leafIM.instanceMatrix.needsUpdate = true;
+    const trunkY = t.kind === 'pine' ? 1.6 : t.kind === 'oak' ? 1.3 : 2.1;
+    const leafY = t.kind === 'pine' ? 4.8 : t.kind === 'oak' ? 3.4 : 4.4;
+    dummy.position.set(t.x, y + trunkY * t.s, t.z);
+    dummy.scale.setScalar(t.s);
+    dummy.updateMatrix();
+    trunkIM.setMatrixAt(t.idx, dummy.matrix);
+    if (!t.dead) {
+      dummy.position.y = y + leafY * t.s;
+      if (t.kind === 'oak') dummy.scale.set(t.s, t.s * 0.8, t.s);
+      if (t.kind === 'birch') dummy.scale.set(t.s, t.s * 1.25, t.s);
+      dummy.updateMatrix();
+      leafIM.setMatrixAt(t.idx, dummy.matrix);
+    }
+    trunkIM.instanceMatrix.needsUpdate = leafIM.instanceMatrix.needsUpdate = true;
   }
   _restoreRock(i) {
     const r = this.rocks[i], dummy = new THREE.Object3D();
@@ -271,7 +469,8 @@ export class World {
     const give = (res, n) => playerAdd(res, n);
     if (kind === 'tree') {
       const t = this.trees[i]; t.alive = false; t.respawn = 100;
-      this._hideInstance(this.trunkIM, i); this._hideInstance(this.leafIM, i);
+      const [trunkIM, leafIM] = this._treeIMs(t.kind);
+      this._hideInstance(trunkIM, t.idx); this._hideInstance(leafIM, t.idx);
       const ci = G.colliders.findIndex(c => c.x === t.x && c.z === t.z && !c.owner);
       if (ci >= 0) G.colliders.splice(ci, 1);
       give('wood', (G.playerInv.axe || 0) > 0 ? 6 : 3);
@@ -292,30 +491,92 @@ export class World {
     }
   }
 
-  // ---------- static POIs ----------
+  // ---------- the Cursed Ruins: a fallen keep crawling with the dead ----------
   _buildRuins() {
     const mat = new THREE.MeshLambertMaterial({ color: 0x5c5c68 });
+    const dark = new THREE.MeshLambertMaterial({ color: 0x44444e });
     const g = new THREE.Group();
     const { x: cx, z: cz } = POI.ruins;
-    // broken walls & pillars in a loose ring
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2;
-      const d = 12 + Math.random() * 16;
+    // outer broken curtain wall
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      if (i % 5 === 0) continue; // collapsed gaps to slip through
+      const d = 24 + Math.random() * 4;
       const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
-      const w = 2 + Math.random() * 5, h = 1.5 + Math.random() * 4;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 1.1), mat);
+      const w = 4 + Math.random() * 3, h = 2 + Math.random() * 3.5;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 1.2), mat);
       m.position.set(x, terrainHeight(x, z) + h / 2 - 0.3, z);
-      m.rotation.y = a + Math.random();
-      m.rotation.z = (Math.random() - 0.5) * 0.15;
+      m.rotation.y = a + Math.PI / 2;
+      m.rotation.z = (Math.random() - 0.5) * 0.12;
       m.castShadow = true;
       g.add(m);
-      G.colliders.push({ x, z, r: Math.max(w, 1.1) * 0.45, owner: null });
+      G.colliders.push({ x, z, r: Math.max(w, 1.2) * 0.42, owner: null });
     }
-    // central shattered altar
+    // inner pillars and toppled arches
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2 + 0.4;
+      const d = 9 + Math.random() * 8;
+      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      const h = 2.5 + Math.random() * 3.5;
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.7, h, 7), mat);
+      p.position.set(x, terrainHeight(x, z) + h / 2 - 0.2, z);
+      p.rotation.z = (Math.random() - 0.5) * (i % 3 === 0 ? 0.9 : 0.1); // some toppled
+      p.castShadow = true;
+      g.add(p);
+      G.colliders.push({ x, z, r: 0.8, owner: null });
+    }
+    // one standing archway
+    const archX = cx - 12, archZ = cz + 8;
+    for (const s of [-1, 1]) {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(1.1, 5, 1.1), mat);
+      p.position.set(archX + s * 2, terrainHeight(archX, archZ) + 2.5, archZ);
+      p.castShadow = true; g.add(p);
+      G.colliders.push({ x: archX + s * 2, z: archZ, r: 0.8, owner: null });
+    }
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(5.4, 1, 1.2), mat);
+    lintel.position.set(archX, terrainHeight(archX, archZ) + 5.2, archZ);
+    g.add(lintel);
+    // the broken tower: a stump of stacked rings
+    const tx = cx + 10, tz = cz - 10;
+    for (let lvl = 0; lvl < 4; lvl++) {
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(3.2 - lvl * 0.2, 3.4 - lvl * 0.2, 1.6, 9), lvl % 2 ? dark : mat);
+      ring.position.set(tx, terrainHeight(tx, tz) + 0.8 + lvl * 1.6, tz);
+      ring.rotation.y = lvl * 0.2;
+      ring.castShadow = true;
+      g.add(ring);
+    }
+    G.colliders.push({ x: tx, z: tz, r: 3.5, owner: null });
+    // central shattered altar — and the reliquary the dead still guard
     const alt = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 2.2, 1.4, 8), mat);
     alt.position.set(cx, terrainHeight(cx, cz) + 0.7, cz);
     g.add(alt);
     G.colliders.push({ x: cx, z: cz, r: 2.1, owner: null });
+    const rel = new THREE.Group();
+    const relBox = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.7, 0.8), dark);
+    relBox.position.y = 0.35; relBox.castShadow = true; rel.add(relBox);
+    const relLid = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.25, 0.9), mat);
+    relLid.position.y = 0.8; rel.add(relLid);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.18),
+      new THREE.MeshBasicMaterial({ color: 0x7fb8d8 }));
+    gem.position.y = 1.05; rel.add(gem);
+    const relLight = new THREE.PointLight(0x6fa8c8, 3, 8);
+    relLight.position.y = 1.2; rel.add(relLight);
+    const rx = cx + 2.8, rz = cz + 1;
+    rel.position.set(rx, terrainHeight(rx, rz), rz);
+    g.add(rel);
+    POI.ruins.reliquary = { x: rx, z: rz };
+    // bone piles: the dead have been busy
+    const boneMat = new THREE.MeshLambertMaterial({ color: 0xcfc6b0 });
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * 6.28, d = 4 + Math.random() * 16;
+      const x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
+      for (let j = 0; j < 3; j++) {
+        const bone = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.5 + Math.random() * 0.3, 4), boneMat);
+        bone.position.set(x + (Math.random() - 0.5) * 0.8, terrainHeight(x, z) + 0.08, z + (Math.random() - 0.5) * 0.8);
+        bone.rotation.set(Math.PI / 2, Math.random() * 3, 0);
+        g.add(bone);
+      }
+    }
     G.scene.add(g);
   }
 
@@ -332,7 +593,6 @@ export class World {
       g.add(tent);
       G.colliders.push({ x, z, r: 2.2, owner: null });
     }
-    // camp fire (visual)
     const fire = new THREE.Mesh(new THREE.ConeGeometry(0.5, 0.9, 6),
       new THREE.MeshBasicMaterial({ color: 0xff7722 }));
     fire.position.set(cx, terrainHeight(cx, cz) + 0.5, cz);
@@ -340,7 +600,7 @@ export class World {
     this.banditFire = new THREE.PointLight(0xff8833, 8, 20);
     this.banditFire.position.copy(fire.position).add(new THREE.Vector3(0, 1, 0));
     g.add(this.banditFire);
-    // crude spike barricades: the outlaws' defenses, scavenged not built
+    // crude spike barricades
     const spikeMat = new THREE.MeshLambertMaterial({ color: 0x4e3a24 });
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + 0.3;
@@ -353,7 +613,7 @@ export class World {
         g.add(sp);
       }
     }
-    // the loot stash: everything they have stolen, under one tarp
+    // the loot stash under a tarp
     const stash = new THREE.Group();
     const stashMat = new THREE.MeshLambertMaterial({ color: 0x6b4e2e });
     const mkBox = (w, h, d, x, y, z, ry) => {
@@ -376,7 +636,6 @@ export class World {
   }
 
   _buildDen() {
-    // monolith ring marking the werewolf's territory
     const mat = new THREE.MeshLambertMaterial({ color: 0x3a3f4a });
     const { x: cx, z: cz, r } = POI.werewolfDen;
     for (let i = 0; i < 9; i++) {
@@ -393,7 +652,6 @@ export class World {
   }
 
   _buildRoadProps() {
-    // signposts along the King's Road
     const mat = new THREE.MeshLambertMaterial({ color: 0x5a4228 });
     for (const x of [-60, 0, 60]) {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 2.4, 0.25), mat);
@@ -407,7 +665,7 @@ export class World {
     }
   }
 
-  // ---------- lighting & sky ----------
+  // ---------- lighting, sun & moon discs, stars ----------
   _buildLights() {
     G.hemi = new THREE.HemisphereLight(0xbfd4e8, 0x3a3325, 0.9);
     G.scene.add(G.hemi);
@@ -422,6 +680,32 @@ export class World {
     G.scene.background = new THREE.Color(0x8fa3b8);
     this.moon = new THREE.DirectionalLight(0x8899cc, 0.0);
     G.scene.add(this.moon, this.moon.target);
+  }
+
+  _buildSky() {
+    // the sun and the moon are BODIES in the sky, not just light values
+    this.sunDisc = new THREE.Mesh(new THREE.SphereGeometry(9, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xffd9a0, fog: false }));
+    G.scene.add(this.sunDisc);
+    this.moonDisc = new THREE.Mesh(new THREE.SphereGeometry(6.5, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xdfe6f0, fog: false }));
+    G.scene.add(this.moonDisc);
+    // stars: a dome of points that only the night reveals
+    const starPos = new Float32Array(700 * 3);
+    for (let i = 0; i < 700; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const el = Math.random() * Math.PI * 0.48 + 0.05;
+      const r = 430;
+      starPos[i * 3] = Math.cos(a) * Math.cos(el) * r;
+      starPos[i * 3 + 1] = Math.sin(el) * r;
+      starPos[i * 3 + 2] = Math.sin(a) * Math.cos(el) * r;
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+    this.stars = new THREE.Points(starGeo, new THREE.PointsMaterial({
+      color: 0xcdd8e8, size: 1.6, transparent: true, opacity: 0, fog: false,
+      sizeAttenuation: false }));
+    G.scene.add(this.stars);
   }
 
   // color keys for the day cycle
@@ -448,8 +732,10 @@ export class World {
         if (r.respawn <= 0) {
           r.alive = true;
           restore(i);
-          if (arr === this.trees || arr === this.rocks)
-            G.colliders.push({ x: r.x, z: r.z, r: arr === this.trees ? 0.55 : (r.s || 1) * 0.9, owner: null });
+          if (arr === this.trees)
+            G.colliders.push({ x: r.x, z: r.z, r: r.kind === 'birch' ? 0.4 : 0.55, owner: null });
+          else if (arr === this.rocks)
+            G.colliders.push({ x: r.x, z: r.z, r: (r.s || 1) * 0.9, owner: null });
         }
       }
     });
@@ -461,7 +747,6 @@ export class World {
     // sun position orbits the player so shadows stay crisp
     const t = G.time;
     const sunA = (t - 0.25) * Math.PI * 2; // 0 at dawn
-    const elev = Math.sin(sunA * 0.5 * 2) * 0; // unused
     const px = G.player ? G.player.pos.x : 0, pz = G.player ? G.player.pos.z : 0;
     const se = Math.sin((t - 0.25) / 0.5 * Math.PI); // day elevation curve
     G.sun.position.set(px + Math.cos(sunA) * 120, Math.max(8, se * 140), pz + 40);
@@ -469,6 +754,30 @@ export class World {
     this.moon.position.set(px - 60, 100, pz - 40);
     this.moon.target.position.set(px, 0, pz);
     this.moon.intensity = isNight() ? 0.35 : 0;
+
+    // the celestial bodies ride their arcs
+    const sunDir = new THREE.Vector3(Math.cos(sunA) * 120, Math.max(2, se * 140), 40).normalize();
+    this.sunDisc.position.set(px + sunDir.x * 400, sunDir.y * 400, pz + sunDir.z * 400);
+    this.sunDisc.visible = se > -0.15;
+    // the moon rises opposite the sun
+    const moonEl = Math.max(0.12, -se * 0.9 + 0.15);
+    this.moonDisc.position.set(px - Math.cos(sunA) * 320, moonEl * 340, pz - 60);
+    this.moonDisc.visible = isNight() || se < 0.25;
+    const redMoon = G.redMoon && G.redMoon.active && isNight();
+    this.moonDisc.material.color.setHex(redMoon ? 0xc03030 : 0xdfe6f0);
+    this.moonDisc.scale.setScalar(redMoon ? 1.45 : 1);
+    // stars fade in with deep night
+    const nightDepth = t < 0.22 ? 1 - t / 0.22 * 0.4 : t > 0.8 ? (t - 0.8) / 0.2 : 0;
+    this.stars.material.opacity = Math.min(0.9, nightDepth) * (redMoon ? 0.5 : 1);
+    this.stars.position.set(px, 0, pz);
+    if (redMoon) this.stars.material.color.setHex(0xd8b8b8);
+    else this.stars.material.color.setHex(0xcdd8e8);
+
+    // gentle water shimmer
+    if (this.waters) {
+      const w = Math.sin(performance.now() * 0.0008) * 0.05;
+      for (const water of this.waters) water.position.y = -0.55 + w;
+    }
 
     // interpolate sky/fog colors
     const keys = World.SKY;
@@ -478,8 +787,8 @@ export class World {
     const f = (t - a.t) / Math.max(0.0001, b.t - a.t);
     const cs = new THREE.Color(a.sky).lerp(new THREE.Color(b.sky), f);
     const cf = new THREE.Color(a.fog).lerp(new THREE.Color(b.fog), f);
-    // the Red Moon stains the night crimson (loop bible: the sky itself warns you)
-    if (G.redMoon && G.redMoon.active && isNight()) {
+    // the Red Moon stains the night crimson
+    if (redMoon) {
       cs.lerp(new THREE.Color(0x2e070c), 0.85);
       cf.lerp(new THREE.Color(0x30090d), 0.85);
       this.moon.color.setHex(0xc03030);

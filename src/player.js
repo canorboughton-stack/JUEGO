@@ -7,7 +7,7 @@ import { FOOD_TYPES } from './storage.js';
 import { bindCreature } from './taming.js';
 import { fireArrow } from './villagers.js';
 import { bx } from './models.js';
-import { campBanditsAlive, plunderBanditStash } from './entities.js';
+import { campBanditsAlive, plunderBanditStash, ruinsGhoulsAlive, plunderReliquary } from './entities.js';
 import { POI } from './world.js';
 
 // weapons are earned, not given (ARK-style): club -> iron sword -> hunting bow
@@ -224,13 +224,17 @@ export class Player {
   }
 
   eat() {
-    const food = FOOD_TYPES.find(r => G.playerInv[r] > 0);
+    // a hot meal beats raw rations: cooked meat first, then whatever's in the pack
+    const food = (G.playerInv.cookedmeat || 0) > 0 ? 'cookedmeat'
+      : FOOD_TYPES.find(r => G.playerInv[r] > 0);
     if (!food) { G.ui.log('No food in your pack — carry meat, corn or cabbage.'); return; }
     if (this.hunger > 92) { G.ui.log('You are not hungry.'); return; }
     G.playerInv[food]--;
-    this.hunger = Math.min(this.maxHu, this.hunger + 30);
-    this.hp = Math.min(this.maxHp, this.hp + 8);
-    G.ui.log(`You eat ${food}. (+30 hunger, +8 health)`);
+    const cooked = food === 'cookedmeat';
+    this.hunger = Math.min(this.maxHu, this.hunger + (cooked ? 45 : 30));
+    this.hp = Math.min(this.maxHp, this.hp + (cooked ? 15 : 8));
+    G.ui.log(cooked ? 'A hot meal. (+45 hunger, +15 health)'
+      : `You eat ${food}. (+30 hunger, +8 health)`);
   }
 
   _moveInput() {
@@ -348,6 +352,10 @@ export class Player {
       if (b.fire > 0) { best = { kind: 'extinguish', obj: b, label: `beat out the fire on the ${b.def.name}`, hold: true }; break; }
       if (b.built < 1) { best = { kind: 'construct', obj: b, label: `construct ${b.def.name} (${Math.round(b.built * 100)}%)`, hold: true }; break; }
       if (b.hp < b.maxHp - 1) { best = { kind: 'repair', obj: b, label: `repair ${b.def.name} (${Math.round(b.hp / b.maxHp * 100)}%)`, hold: true }; break; }
+      if (b.type === 'campfire' && (G.playerInv.meat || 0) > 0) {
+        best = { kind: 'cook', obj: b, label: `cook meat over the fire (${G.playerInv.meat} raw)`, hold: true };
+        break;
+      }
       if (b.type === 'chest') { best = { kind: 'chest', obj: b, label: 'open Storage Chest' }; break; }
       if (b.type === 'workbench') { best = { kind: 'craft', obj: b, label: 'use Workbench' }; break; }
       if (b.type === 'animalpen') { best = { kind: 'pen', obj: b, label: `tend Animal Pen${b.penFood ? ` (collect ${b.penFood} food)` : ''}` }; break; }
@@ -374,6 +382,14 @@ export class Player {
     if (G.merchant && !G.merchant.gone && G.merchant.state === 'trading' &&
         near(G.merchant.pos.x, G.merchant.pos.z, 4.5))
       best = { kind: 'trade', obj: G.merchant, label: 'trade with the merchant' };
+    // the ruins reliquary: the dead guard it; pry it open when they are down
+    const relic = POI.ruins.reliquary;
+    if (relic && G.day >= (G.ruinsRelic.lootedUntil || 0) && near(relic.x, relic.z, 3.5)) {
+      const dead = ruinsGhoulsAlive();
+      best = dead > 0
+        ? { kind: 'relicguarded', obj: null, label: `the dead guard the reliquary — ${dead} still walk` }
+        : { kind: 'relic', obj: null, label: 'pry open the reliquary' };
+    }
     // the bandit stash: loot it once the camp is cleared of sentries
     const stash = POI.banditCamp.stash;
     if (stash && G.day >= (G.banditCamp.clearedUntil || 0) && near(stash.x, stash.z, 3.5)) {
@@ -420,6 +436,17 @@ export class Player {
       } else if (best.kind === 'extinguish') {
         best.obj.extinguishTick(dt);
         holdProgress = 1 - best.obj.fire;
+      } else if (best.kind === 'cook') {
+        this.gatherHold += dt;
+        holdProgress = this.gatherHold / 1.2;
+        if (this.gatherHold >= 1.2) {
+          this.gatherHold = 0;
+          if ((G.playerInv.meat || 0) > 0) {
+            G.playerInv.meat--;
+            G.playerInv.cookedmeat = (G.playerInv.cookedmeat || 0) + 1;
+            G.ui.log('The fat sizzles — +1 cooked meat.');
+          }
+        }
       } else if (best.kind === 'ritual') {
         // the Binding Ritual: 6 uninterrupted seconds; broken by taking damage
         if ((G.playerInv.incense || 0) < 1 || (G.playerInv.meat || 0) < 2) {
@@ -455,6 +482,7 @@ export class Player {
         else if (best.kind === 'trade') G.ui.openTradePanel();
         else if (best.kind === 'tamed') G.ui.openTamedPanel(best.obj);
         else if (best.kind === 'stash') plunderBanditStash();
+        else if (best.kind === 'relic') plunderReliquary();
         else if (best.kind === 'chest') G.ui.openStoragePanel(best.obj);
         else if (best.kind === 'craft') G.ui.openCraftPanel(best.obj);
         else if (best.kind === 'pen') G.ui.openPenPanel(best.obj);

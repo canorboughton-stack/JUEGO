@@ -44,8 +44,10 @@ screen to lock the mouse.
 
 **Explore → Survive → Build → Defend**
 
-1. Leave the village. Chop trees in the **Dark Forest** (east), mine stone in the
-   **Rocky Hills** (west), gather wild cabbage in the meadows, hunt for meat and hide.
+1. Leave the village. Fell **pine, oak, and birch** in the Dark Forest and the
+   Southwood, mine stone in the **Rocky Hills** (west), gather wild cabbage and herbs
+   in the meadows, hunt for meat and hide — then **cook the meat over your campfire**
+   (hold `E`): a hot meal restores far more than raw rations.
 2. Return home. Your campfire claims **60m of territory** — you can only build inside
    it (never on the King's Road). Watch Positions expand territory. Large buildings use
    **staged construction**: pay materials, a timber frame rises, hold `E` to hammer it up.
@@ -141,16 +143,37 @@ while **one guard investigates** and the rest hold coverage.
 The far north belongs to the **White Werewolf**. It hunts the weak, feeds, and
 withdraws — enter the monolith ring at your peril.
 
+## The world
+
+The valley is walled in by the **Grey Peaks** — a mountain ring that climbs to bare
+rock and snow at the map's edge, with highlands rising behind the Rocky Hills. Three
+lakes sink into their own basins, ringed with reeds: **Mirror Lake**, **Blackwater**,
+and **Reedmere**. The forest is dense and mixed — dark pines crowd the north and the
+endless **Southwood**, broadleaf oaks fill the Dark Forest, white-barked birches
+scatter the meadows — and every one of them is timber (an axe fells 6 wood; bare
+hands strip 3). Ferns, fallen logs, and dead trees fill the understory.
+
+The sky is real: a **sun disc** rides the day arc, a **moon** climbs the night, and
+seven hundred **stars** fade in with deep darkness. On a Red Moon the moon swells
+crimson, the sky bleeds, and the stars dim behind the haze.
+
+The **Cursed Ruins** are now a fallen keep — broken curtain wall, toppled pillars, a
+shattered tower — and it *swarms* with the dead: ghouls and rot ghouls guard a
+**reliquary** at its heart. Cut them all down and pry it open for incense, monster
+parts, and bones; the dead gather again within days, and the ruins never stay safe.
+
 ## The map
 
 ```
         THE HUNTING GROUNDS (White Werewolf)
    BANDIT CAMP              CURSED RUINS
-        THE NORTHERN MARCHES
+        THE NORTHERN MARCHES         (reliquary)
 ROCKY HILLS    THE SETTLEMENT    DARK FOREST
-  (stone)        (you, here)       (wood)
+  (stone)        (you, here)     (wood, wolves)
 ———————————— THE KING'S ROAD ————————————
-              (wanderers, merchants)
+   (wanderers, merchants)      ~ Blackwater ~
+  ~ Reedmere ~   THE SOUTHWOOD   ~ Mirror Lake ~
+        THE GREY PEAKS wall the world in
 ```
 
 ## Creature design (each teaches a lesson)
@@ -173,7 +196,7 @@ index.html        shell + HUD markup/styles
 lib/three.module.js  vendored Three.js (r160)
 src/models.js     character rig + medieval architecture helpers (timber, thatch, logs)
 src/state.js      shared game state, collision helpers (gates pass friendlies)
-src/world.js      terrain, map zones, vegetation, POIs, day/night
+src/world.js      terrain (peaks/lakes), biomes & three timbers, ruins, sun/moon/stars
 src/territory.js  settlement control radius, road buffer, boundary rings
 src/storage.js    player/NPC/settlement inventories, chests, recipes
 src/alerts.js     central village alert system (calm/suspicious/attack/recovery)
@@ -187,7 +210,7 @@ src/merchant.js   the merchant carriage: road travel, halt, barter trades
 src/taming.js     binding ritual, tamed creatures, trust, companion/defender AI
 src/player.js     third-person controller, camera, combat, interactions
 src/ui.js         HUD, settlement panel, storage/craft/pen/recruit menus
-src/main.js       bootstrap, main loop, daily events, save/load (v2)
+src/main.js       bootstrap, main loop, daily events, save/load (v3)
 ```
 
 *Design bible: "Kingdoms of the Cursed — Game Design Bible, Vol. I" by Alejandro Ruiz.*

@@ -622,12 +622,13 @@ export function spawnInitialCreatures() {
   // boars: forest edge + hills
   const boarSpots = [[55, 5], [120, -10], [-70, 0], [-120, -20], [-90, 25], [150, -60]];
   for (const [x, z] of boarSpots) spawn('boar', x, z);
-  // ghouls haunt the ruins (dormant by day)
-  for (let i = 0; i < 4; i++) {
-    const a = i * 1.6, r = 10 + i * 4;
+  // ghouls swarm the ruins (dormant by day) — the dead guard their reliquary
+  for (let i = 0; i < 7; i++) {
+    const a = i * 0.9, r = 6 + (i % 4) * 4;
     spawn('ghoul', POI.ruins.x + Math.cos(a) * r, POI.ruins.z + Math.sin(a) * r);
   }
   spawn('rotghoul', POI.ruins.x, POI.ruins.z + 6);
+  spawn('rotghoul', POI.ruins.x - 5, POI.ruins.z - 4);
   // bandits at their camp: blades in the tents, archers on the edge
   if (G.day >= (G.banditCamp.clearedUntil || 0)) {
     for (let i = 0; i < 4; i++) {
@@ -689,6 +690,27 @@ export function plunderBanditStash() {
   recordMemory('raid');
 }
 
+// how many of the dead still guard the reliquary?
+export function ruinsGhoulsAlive() {
+  return G.creatures.filter(c => !c.dead &&
+    (c.type === 'ghoul' || c.type === 'rotghoul') &&
+    dist2d(c.pos.x, c.pos.z, POI.ruins.x, POI.ruins.z) < 45).length;
+}
+
+// pry open the reliquary once the dead are down: rare loot, and the horde returns
+export function plunderReliquary() {
+  const haul = { incense: 4, monsterpart: 2, bones: 6, stone: 5 };
+  const parts = [];
+  for (const [k, v] of Object.entries(haul)) {
+    const got = playerAdd(k, v);
+    if (got) parts.push(`+${got} ${k}`);
+  }
+  G.ruinsRelic.lootedUntil = G.day + 5;
+  G.ui.log(`You pry open the reliquary: ${parts.join(', ')}.`);
+  G.ui.banner('RELIQUARY PLUNDERED', 'The dead will gather again.');
+  recordMemory('ghost');
+}
+
 // bandit raid: every 3rd night they march on the settlement —
 // unless their camp lies cleared and empty
 export function banditRaid() {
@@ -723,10 +745,12 @@ export function dawnRespawns() {
     if (count('bandit') < 3) spawn('bandit', POI.banditCamp.x + 5, POI.banditCamp.z);
     if (count('banditarcher') < 2) spawn('banditarcher', POI.banditCamp.x - 8, POI.banditCamp.z + 7);
   }
-  if (count('ghoul') < 3) {
+  // the ruins never stay safe — the dead always gather again
+  while (count('ghoul') < 5) {
     const a = Math.random() * 6.28;
     spawn('ghoul', POI.ruins.x + Math.cos(a) * 12, POI.ruins.z + Math.sin(a) * 12);
   }
+  if (count('rotghoul') < 1) spawn('rotghoul', POI.ruins.x, POI.ruins.z + 5);
   if (!G.werewolfSlain && count('werewolf') < 1)
     spawn('werewolf', POI.werewolfDen.x, POI.werewolfDen.z);
   G.raidActive = false;

@@ -5,13 +5,13 @@
 // player + settlement chests; farmers physically carry crops to a chest.
 import { G, dist2d } from './state.js';
 
-export const RESOURCES = ['wood', 'stone', 'meat', 'corn', 'cabbage', 'hide',
+export const RESOURCES = ['wood', 'stone', 'meat', 'cookedmeat', 'corn', 'cabbage', 'hide',
   'herbs', 'bones', 'monsterpart', 'incense'];
-export const FOOD_TYPES = ['corn', 'cabbage', 'meat']; // eaten cheapest-first
+export const FOOD_TYPES = ['corn', 'cabbage', 'meat', 'cookedmeat']; // eaten cheapest-first
 export const ITEMS = ['club', 'sword', 'bow', 'axe', 'pickaxe', 'knife',
   'arrows', 'hidearmor'];                              // crafted equipment & tools
 export const RES_ICONS = {
-  wood: '🪵', stone: '🪨', meat: '🍖', corn: '🌽', cabbage: '🥬',
+  wood: '🪵', stone: '🪨', meat: '🍖', cookedmeat: '🍗', corn: '🌽', cabbage: '🥬',
   hide: '🟫', herbs: '🌿', bones: '🦴', monsterpart: '🧿', incense: '🕯',
   club: '🏏', sword: '🗡', bow: '🏹', axe: '🪓', pickaxe: '⛏', knife: '🔪',
   arrows: '➶', hidearmor: '🥋',
