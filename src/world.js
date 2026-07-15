@@ -491,6 +491,43 @@ export class World {
     }
   }
 
+  // NPC harvesting (woodcutters/stonecutters): same fell/mine as the player's,
+  // but the yield goes to the worker's hands, not the player's pack.
+  npcHarvest(kind, i) {
+    if (kind === 'tree') {
+      const t = this.trees[i];
+      if (!t || !t.alive) return null;
+      t.alive = false; t.respawn = 100;
+      const [trunkIM, leafIM] = this._treeIMs(t.kind);
+      this._hideInstance(trunkIM, t.idx); this._hideInstance(leafIM, t.idx);
+      const ci = G.colliders.findIndex(c => c.x === t.x && c.z === t.z && !c.owner);
+      if (ci >= 0) G.colliders.splice(ci, 1);
+      return { res: 'wood', n: 4 };
+    }
+    if (kind === 'rock') {
+      const r = this.rocks[i];
+      if (!r || !r.alive) return null;
+      r.alive = false; r.respawn = 140;
+      this._hideInstance(this.rockIM, i);
+      const ci = G.colliders.findIndex(c => c.x === r.x && c.z === r.z && !c.owner);
+      if (ci >= 0) G.colliders.splice(ci, 1);
+      return { res: 'stone', n: 3 };
+    }
+    return null;
+  }
+
+  // nearest living tree/rock to a point, within maxD — for gatherer villagers
+  nearestAlive(kind, x, z, maxD = 65) {
+    const arr = kind === 'tree' ? this.trees : this.rocks;
+    let best = -1, bd = maxD;
+    for (let i = 0; i < arr.length; i++) {
+      if (!arr[i].alive) continue;
+      const d = dist2d(x, z, arr[i].x, arr[i].z);
+      if (d < bd) { bd = d; best = i; }
+    }
+    return best >= 0 ? { i: best, x: arr[best].x, z: arr[best].z } : null;
+  }
+
   // ---------- the Cursed Ruins: a fallen keep crawling with the dead ----------
   _buildRuins() {
     const mat = new THREE.MeshLambertMaterial({ color: 0x5c5c68 });

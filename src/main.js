@@ -7,10 +7,11 @@ import { G, isNight } from './state.js';
 import { World, zoneAt, POI } from './world.js';
 import { Player } from './player.js';
 import { spawnInitialCreatures, updateCreatures, updateLoots, nightSpawns, banditRaid,
-         dawnRespawns } from './entities.js';
+         dawnRespawns, kingdomBailiffs, spawn } from './entities.js';
 import { placeBuilding, updateBuildings, buildState, enterBuildMode, exitBuildMode,
-         selectSlot, demolishNearest, rotateGhost, BUILD_ORDER, BUILDING_DEFS,
+         selectSlot, cycleSlot, demolishNearest, rotateGhost, BUILD_ORDER, BUILDING_DEFS,
          applyBuildingEffects, updateBuildMode } from './buildings.js';
+import { initAudio, sfx, setRedMoonDrone, toggleMute } from './audio.js';
 import { spawnWanderer, updateWanderers, updateVillagers, assignJobs, Villager,
          consumeDailyFood, addGrave } from './villagers.js';
 import { UI } from './ui.js';
@@ -53,6 +54,7 @@ G.player = new Player();
 // ---------- input ----------
 document.addEventListener('keydown', e => {
   G.keys[e.code] = true;
+  initAudio(); // browsers unlock sound on the first real key
   if (G.paused) return;
   if (e.code === 'Tab') { e.preventDefault(); G.ui.toggleSettlementPanel(); return; }
   if (G.uiOpen) {
@@ -67,10 +69,16 @@ document.addEventListener('keydown', e => {
     case 'KeyK': saveGame(); break;
     case 'KeyX': demolishNearest(); break;
     case 'KeyR': if (buildState.active) rotateGhost(); break;
+    case 'KeyM': G.ui.log(toggleMute() ? 'Sound muted.' : 'Sound on.'); break;
     case 'Space': e.preventDefault(); if (!buildState.active) G.player.roll(); break;
     case 'Escape': if (buildState.active) exitBuildMode(); break;
+    // every building is reachable without the mouse: arrows/brackets browse the catalog
+    case 'ArrowLeft': case 'BracketLeft':
+      if (buildState.active) { e.preventDefault(); cycleSlot(-1); } break;
+    case 'ArrowRight': case 'BracketRight':
+      if (buildState.active) { e.preventDefault(); cycleSlot(1); } break;
     default: {
-      // number keys select build slots
+      // number keys jump straight to their slot
       if (buildState.active) {
         const i = BUILD_ORDER.findIndex(t => BUILDING_DEFS[t].key === e.key);
         if (i >= 0) selectSlot(i);
@@ -78,6 +86,11 @@ document.addEventListener('keydown', e => {
     }
   }
 });
+// the scroll wheel browses the build catalog too
+window.addEventListener('wheel', e => {
+  if (!G.paused && buildState.active) cycleSlot(e.deltaY > 0 ? 1 : -1);
+}, { passive: true });
+document.addEventListener('mousedown', initAudio);
 document.addEventListener('keyup', e => { G.keys[e.code] = false; });
 
 // ---------- new game / save / load ----------
@@ -252,13 +265,24 @@ function worldEvents(dt) {
   const night = isNight();
   if (night && !lastNight) {
     const redTonight = redMoonDusk();      // the Red Moon rises on its appointed night
+    setRedMoonDrone(redTonight);
+    if (redTonight) sfx('sting');
     nightSpawns(redMoonMult());
     if (!redTonight) G.ui.log('Night falls. The cursed things stir...');
+    sfx('howl'); // something answers the dark, every night
     // burn incense from storage: the smoke keeps ghosts off the settlement
     G.incenseWard = settlementWithdraw('incense', 1) === 1;
     if (G.incenseWard) G.ui.log('🕯 Incense smoke drifts over the village — the dead will keep their distance tonight.');
-    if ((G.day >= 2 && G.day % 3 === 0) || (redTonight && Math.random() < 0.5)) banditRaid();
+    // the first night teaches the rules safely: one shape probes the light and flinches
+    if (G.day === 1) {
+      const a = Math.random() * 6.28;
+      spawn('blackdog', Math.cos(a) * 34, Math.sin(a) * 34, { timid: true });
+      G.ui.log('Eyes glint beyond the torchlight... something is testing your fire.');
+    }
+    if (G.taxes.bailiffsDue) kingdomBailiffs();
+    else if ((G.day >= 2 && G.day % 3 === 0) || (redTonight && Math.random() < 0.5)) banditRaid();
   } else if (!night && lastNight) {
+    setRedMoonDrone(false);
     redMoonDawnAfter();       // the red sky pales; the world takes stock
     dawnRespawns();
     G.incenseWard = false;
@@ -322,8 +346,13 @@ const clock = new THREE.Clock();
 
 function tick() {
   requestAnimationFrame(tick);
-  const dt = Math.min(0.05, clock.getDelta());
-  if (!G.paused) {
+  let dt = Math.min(0.05, clock.getDelta());
+  // hit-stop: a heartbeat of frozen time when a strike lands (combat feel)
+  if (G.hitstop > 0) {
+    G.hitstop -= dt;
+    dt = 0;
+  }
+  if (!G.paused && dt > 0) {
     G.world.update(dt);
     G.player.update(dt);
     updateCreatures(dt);

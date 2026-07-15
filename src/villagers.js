@@ -241,6 +241,14 @@ export class Villager {
       // work apron, rolled-sleeve look, straw hat, utility pouch
       this.fig = makeCharacter({ tunic: 0x7a6a3a, skin: 0xc9a07a, hat: 'straw',
         hair: this.hair, apron: true, pouch: true, ...sil });
+    } else if (this.role === 'woodcutter') {
+      // heavy forest browns, hood down the trail, big carry pouch
+      this.fig = makeCharacter({ tunic: 0x6a4a2e, skin: 0xc9a07a, hat: 'hood',
+        hatColor: 0x4a3a26, pants: 0x453424, pouch: true, reinforced: true, ...sil });
+    } else if (this.role === 'stonecutter') {
+      // dusted greys, tied-back hair, work pouch
+      this.fig = makeCharacter({ tunic: 0x5c6068, skin: 0xc9a07a,
+        hair: this.hair, pants: 0x45484e, apron: true, pouch: true, ...sil });
     } else {
       this.fig = makeCharacter({ tunic: this.tunic, skin: 0xc9a07a, hair: this.hair,
         pouch: Math.random() < 0.5, ...sil });
@@ -593,10 +601,63 @@ export class Villager {
 
     // work
     if (this.role === 'farmer') this._updateFarmer(dt);
+    else if (this.role === 'woodcutter') this._updateGatherer(dt, 'tree');
+    else if (this.role === 'stonecutter') this._updateGatherer(dt, 'rock');
     else {
       this.state = 'Idle';
       const hp = this._homePos();
       this._wanderNear(hp.x, hp.z, 8, dt, 1.8 * this.eff());
+    }
+  }
+
+  // ---------- gatherer loop (woodcutter/stonecutter): the settlement finally
+  // feeds its own material economy — find, fell, haul to a chest, repeat ----------
+  _updateGatherer(dt, kind) {
+    const res = kind === 'tree' ? 'wood' : 'stone';
+    // haul home once the sling is full (two fells per trip — visible round trips)
+    if (invTotal(this.carry) >= 8) {
+      if (this._deliver(dt)) return;
+      this._gt = null;
+      return;
+    }
+    // find (or re-validate) a target within working range of the village heart
+    const fire = this._firePos();
+    const arr = kind === 'tree' ? G.world.trees : G.world.rocks;
+    if (!this._gt || !arr[this._gt.i] || !arr[this._gt.i].alive) {
+      this._gt = G.world.nearestAlive(kind, fire.x, fire.z, 75);
+      this.taskTimer = 0;
+      if (!this._gt) {
+        this.problem = kind === 'tree' ? 'no timber in reach' : 'no stone in reach';
+        this.state = 'Idle';
+        this._wanderNear(fire.x, fire.z, 8, dt, 1.6);
+        return;
+      }
+    }
+    const t = this._gt;
+    if (dist2d(this.pos.x, this.pos.z, t.x, t.z) > 1.8) {
+      this.state = 'Walking';
+      // gatherers know their trails: a brisker pace than a stroll to the fields
+      this._moveToward(t.x, t.z, dt, 4.4 * this.eff());
+      return;
+    }
+    // work the tree/rock: visible, timed labor like the farmer's
+    this.state = 'Working';
+    this.mesh.rotation.y = Math.atan2(t.x - this.pos.x, t.z - this.pos.z);
+    this.taskTimer += dt * this.eff();
+    this._swingT = (this._swingT || 0) - dt;
+    if (this._swingT <= 0) {
+      this._swingT = 0.8;
+      this.fig.armPivot.rotation.x = -2.0;
+      setTimeout(() => { if (!this.dead) this.fig.armPivot.rotation.x = 0; }, 200);
+    }
+    if (this.taskTimer >= 3.2) {
+      this.taskTimer = 0;
+      const got = G.world.npcHarvest(kind, t.i);
+      this._gt = null;
+      if (got) {
+        this.carry[got.res] = (this.carry[got.res] || 0) + got.n;
+        G.ui.log(`${this.name} ${kind === 'tree' ? 'felled a tree' : 'broke stone'} (+${got.n} ${got.res}).`);
+      }
     }
   }
 

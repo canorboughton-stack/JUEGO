@@ -20,6 +20,7 @@ export const TRADES = [
   { give: { hide: 4 },    get: { sword: 1 }, note: 'a soldier\'s blade, second-hand' },
   { give: { hide: 3 },    get: { bow: 1 },   note: 'a hunter\'s bow' },
   { give: { bones: 3 },   get: { corn: 3 },  note: 'the bone-carvers pay steady coin' },
+  { give: { cookedmeat: 2 }, get: { stone: 3 }, note: 'hot rations for the road crews' },
   { give: { monsterpart: 1 }, get: { corn: 5, stone: 2 }, note: 'scholars pay dearly for cursed flesh' },
 ];
 

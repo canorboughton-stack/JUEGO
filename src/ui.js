@@ -10,6 +10,7 @@ import { freeBeds, recruitWanderer, TRAITS } from './villagers.js';
 import { ANIMAL_DEFS, addAnimal, penAnimals } from './livestock.js';
 import { alertState } from './alerts.js';
 import { stageName } from './progression.js';
+import { sfx } from './audio.js';
 import { createGroup, disbandGroup, issueCommand, makeCompanion, canLead, canJoin,
          defenseInfo, GROUP_PURPOSES, MAX_MEMBERS } from './groups.js';
 import { TRADES, doTrade } from './merchant.js';
@@ -32,9 +33,9 @@ export class UI {
       zone: $('zoneBanner'), zoneSub: $('zoneSub'),
       prompt: $('prompt'), gatherBar: $('gatherBar'), gatherFill: $('gatherFill'),
       log: $('log'), buildMenu: $('buildMenu'), helpFull: $('helpFull'),
-      dmg: $('dmgVignette'), death: $('deathScreen'),
+      dmg: $('dmgVignette'), death: $('deathScreen'), deathLost: $('deathLost'),
       bossBar: $('bossBar'), bossFill: $('bossFill'), bossName: $('bossName'),
-      panel: $('panel'),
+      panel: $('panel'), compass: $('compassInner'), hitmark: $('hitmark'),
     };
     this.lastZone = '';
     this.zoneTimer = 0;
@@ -59,6 +60,10 @@ export class UI {
       el.addEventListener('click', () => selectSlot(i));
       m.appendChild(el);
     });
+    const hint = document.createElement('div');
+    hint.className = 'bhint';
+    hint.textContent = 'scroll / ← → to browse · number keys jump · R rotate · click to place';
+    m.appendChild(hint);
   }
 
   updateBuildMenu() {
@@ -109,7 +114,69 @@ export class UI {
     this._dmgT = setTimeout(() => { this.els.dmg.style.boxShadow = 'inset 0 0 140px #a0101000'; }, 260);
   }
 
-  showDeath(on) { this.els.death.style.display = on ? 'flex' : 'none'; }
+  showDeath(on, summary) {
+    this.els.death.style.display = on ? 'flex' : 'none';
+    if (on && this.els.deathLost) this.els.deathLost.innerHTML = summary || '';
+  }
+
+  // a brief tick at the crosshair when a strike or arrow connects
+  hitMarker() {
+    const h = this.els.hitmark;
+    if (!h) return;
+    h.style.opacity = '1';
+    clearTimeout(this._hmT);
+    this._hmT = setTimeout(() => { h.style.opacity = '0'; }, 130);
+  }
+
+  // ---------- compass strip: cardinal points + the way home ----------
+  // North is -Z (the Hunting Grounds); the strip shows what the camera faces.
+  _updateCompass() {
+    const el = this.els.compass;
+    if (!el) return;
+    const vd = G.player.viewDir;
+    const heading = Math.atan2(vd.x, -vd.z); // 0 = facing north
+    const marks = [
+      { a: 0, t: 'N' }, { a: Math.PI / 2, t: 'E' },
+      { a: Math.PI, t: 'S' }, { a: -Math.PI / 2, t: 'W' },
+    ];
+    const fire = G.buildings.find(b => b.type === 'campfire' && !b.destroyed);
+    if (fire) {
+      const dx = fire.x - G.player.pos.x, dz = fire.z - G.player.pos.z;
+      if (Math.hypot(dx, dz) > 18)
+        marks.push({ a: Math.atan2(dx, -dz), t: '⌂', home: true });
+    }
+    let html = '';
+    for (const m of marks) {
+      let rel = m.a - heading;
+      while (rel > Math.PI) rel -= Math.PI * 2;
+      while (rel < -Math.PI) rel += Math.PI * 2;
+      if (Math.abs(rel) > 1.15) continue; // ~66° of view either side
+      const pct = 50 + (rel / 1.15) * 48;
+      html += `<span class="cmark${m.home ? ' chome' : ''}" style="left:${pct}%">${m.t}</span>`;
+    }
+    el.innerHTML = html;
+  }
+
+  // the epilogue: the game acknowledges the werewolf's fall — then raises stakes
+  showEpilogue() { this._openPanel('epilogue', null); }
+
+  _epilogueHtml() {
+    const alive = G.villagers.filter(v => !v.dead).length;
+    const standing = G.buildings.filter(b => !b.destroyed && b.built >= 1).length;
+    return `<h3>THE WHITE TERROR FALLS</h3>
+      <div class="psub">"No beast rules the north tonight. A settlement did this —
+      not a hero. Remember that."</div>
+      <div class="pdim" style="margin:10px 0 4px">THE LEDGER OF THE FRONTIER</div>
+      <div>· Days survived: <b>${G.day}</b></div>
+      <div>· Settlement: <b>${stageName()}</b> — ${standing} structures standing</div>
+      <div>· Villagers alive: <b>${alive}</b> · graves dug: <b>${G.graves.length}</b></div>
+      <div>· Red Moons endured: <b>${G.redMoon.count}</b></div>
+      <div>· Beasts bound as companions: <b>${G.tamed.filter(t => !t.dead).length}</b></div>
+      <div class="pwarn" style="margin-top:10px">The valley does not forgive a broken
+      crown: the dead stir harder now, and the Red Moons come faster. The frontier
+      remains yours to hold.</div>
+      <div class="pbtns"><button data-act="close">Hold the valley [E]</button></div>`;
+  }
 
   bossBar(boss) {
     if (!boss) { this.els.bossBar.style.display = 'none'; return; }
@@ -161,6 +228,7 @@ export class UI {
     else if (this.panelMode === 'trade') p.innerHTML = this._tradeHtml();
     else if (this.panelMode === 'tamed') p.innerHTML = this._tamedHtml();
     else if (this.panelMode === 'report') p.innerHTML = this._reportHtml();
+    else if (this.panelMode === 'epilogue') p.innerHTML = this._epilogueHtml();
     else if (this.panelMode === 'settlement') p.innerHTML = this._settlementHtml();
   }
 
@@ -332,8 +400,12 @@ export class UI {
         (each villager eats 1/day)</div>
       <div class="pbtns">
         <button data-act="hire" data-id="farmer" ${beds > 0 ? '' : 'disabled'}>Recruit as FARMER</button>
+        <button data-act="hire" data-id="woodcutter" ${beds > 0 ? '' : 'disabled'}>Recruit as WOODCUTTER</button>
+        <button data-act="hire" data-id="stonecutter" ${beds > 0 ? '' : 'disabled'}>Recruit as STONECUTTER</button>
         <button data-act="hire" data-id="guard" ${beds > 0 && hasWeapon ? '' : 'disabled'}>Recruit as GUARD</button>
         <button data-act="close">Not now [E]</button></div>
+      <div class="pdim">Woodcutters fell timber and stonecutters break rock inside your
+        lands, hauling it to storage — the village feeds its own stockpile.</div>
       ${beds <= 0 ? '<div class="pwarn">No free bed — build a Shack.</div>' : ''}
       ${!hasWeapon ? '<div class="pwarn">Guards need a Sword or Bow (craft at Workbench).</div>' : ''}`;
   }
@@ -343,7 +415,9 @@ export class UI {
     const farmers = alive.filter(v => v.role === 'farmer').length;
     const guards = alive.filter(v => v.role === 'guard').length;
     const homeless = alive.filter(v => !v.home).length;
-    const jobless = alive.filter(v => !v.job).length;
+    // gatherers work the land itself — only building-bound roles can be "jobless"
+    const jobless = alive.filter(v => !v.job &&
+      (v.role === 'farmer' || v.role === 'guard')).length;
     const damaged = G.buildings.filter(b => b.hp < b.maxHp - 1).length;
     const burning = G.buildings.filter(b => b.fire > 0).length;
     const sites = G.buildings.filter(b => b.built < 1).length;
@@ -444,6 +518,7 @@ export class UI {
       if (rc && canAffordCombined(rc.cost)) {
         payCombined(rc.cost);
         playerAdd(rc.id, rc.yield || 1);
+        sfx('craft');
         this.log(`Crafted: ${rc.name}.`);
       }
     } else if (act === 'buy') {
@@ -580,6 +655,8 @@ export class UI {
     this.els.alert.textContent = aTxt;
     this.els.alert.style.color = aCol;
     this.els.alert.style.borderColor = aCol;
+
+    this._updateCompass();
 
     // zone banner on region change
     if (zone && zone.name !== this.lastZone) {

@@ -35,10 +35,15 @@ screen to lock the mouse.
 | Right mouse (hold) | Block |
 | `E` (hold) | Gather / recruit / loot |
 | `F` | Eat food |
-| `B` | Toggle build menu (`1–7` select, `R` rotate) |
+| `B` | Toggle build menu (scroll / `←` `→` browse all, `1–0` jump, `R` rotate) |
 | `X` | Demolish nearest building |
+| `M` | Mute sound |
 | `H` | Help panel |
 | `K` | Save game (localStorage) |
+
+A **compass strip** rides the top of the screen — cardinal points plus a `⌂` mark that
+always points back to your campfire. All sound is **procedural WebAudio** (no assets):
+axe thunks, hit impacts, dusk howls, raid horns, and a low detuned drone under a Red Moon.
 
 ## The core loop
 
@@ -55,7 +60,9 @@ screen to lock the mouse.
    eat 1 food/day from it; crafting and repairs draw from it.
 4. Recruit **wanderers** on the King's Road (needs a free bed; guards need a crafted
    weapon). Farmers plant corn/cabbage, harvest, and physically carry crops to storage.
-   Guards patrol 25m around their post and never chase past 45m.
+   **Woodcutters fell timber and stonecutters break rock** inside your lands and haul
+   it to the chests — the village feeds its own stockpile instead of leaning on your
+   back for every log. Guards patrol 25m around their post and never chase past 45m.
 5. Survive the night. Ghouls wake in the **Cursed Ruins**, ghosts drift through walls
    (torchlight burns them — and if your storage holds **incense**, one stick burns at
    dusk and wards the whole settlement), wolves hunt your livestock — and every third
@@ -67,6 +74,15 @@ screen to lock the mouse.
    Settlement* — from Village on, the Kingdom collects its food levy every 3 days and
    a **merchant carriage** halts on the King's Road at midday: barter hides and
    incense for seed corn, timber, stone, or second-hand weapons (`E` at the cart).
+   **The Kingdom's memory is real:** miss the levy twice and armored **bailiffs**
+   march up the east road at dusk to take what is owed at swordpoint.
+8. Die, and a quarter of every carried resource spills into a **satchel where you
+   fell** — the death screen names the loss and the place; go back for it. Equipment
+   never drops. Lakes are deep: you wade slow near shore and **deep water drains
+   you** — dodge is impossible while swimming. Steep mountain grades cut your pace.
+9. **Slaying the White Werewolf ends the legend, not the game**: an epilogue ledger
+   tallies your days, graves, Red Moons, and bound beasts — then the frontier
+   answers. The dead stir harder, and the Red Moons come faster. Hold the valley.
 
 Press **Tab** for the settlement management panel: population, beds, food, alert level,
 villager states and problems, farm states, warnings, taxes, defense, **groups**,
@@ -194,6 +210,7 @@ ROCKY HILLS    THE SETTLEMENT    DARK FOREST
 ```
 index.html        shell + HUD markup/styles
 lib/three.module.js  vendored Three.js (r160)
+src/audio.js      procedural WebAudio: impacts, howls, horns, the Red Moon drone
 src/models.js     character rig + medieval architecture helpers (timber, thatch, logs)
 src/state.js      shared game state, collision helpers (gates pass friendlies)
 src/world.js      terrain (peaks/lakes), biomes & three timbers, ruins, sun/moon/stars

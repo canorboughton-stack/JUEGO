@@ -7,6 +7,7 @@ import { POI } from './world.js';
 import { makeCharacter, makeWerewolf, bx, cyl } from './models.js';
 import { playerAdd } from './storage.js';
 import { inTerritory } from './territory.js';
+import { sfx } from './audio.js';
 
 // ---------- low-poly figure builders ----------
 export function makeBeast(len, hgt, wid, bodyC, headC) {
@@ -164,6 +165,15 @@ export const CREATURE_DEFS = {
                 bx(h.armL, 0.05, 0.5, 0.07, wood, 0, -0.72, 0.2, 0, 0, -0.35);
                 return h;
               }, name: 'Bandit Archer' },
+  // Kingdom bailiffs: what happens when the levy goes unpaid twice. Disciplined,
+  // better-armed than bandits, and they only want the food you owe.
+  bailiff:  { hp: 85,  dmg: 16, speed: 6.0, aggro: 19, atkR: 2.1, cd: 1.1, r: 0.55,
+              make: () => {
+                const h = makeCharacter({ tunic: 0x5a2430, skin: 0xc9a07a, hat: 'helm',
+                  hatColor: 0x6a707c, pants: 0x33363e, reinforced: true,
+                  kingdomPatch: true, pouch: true });
+                addSword(h.armPivot, 0x9aa2ae, 0.75); return h;
+              }, name: 'Kingdom Bailiff' },
   ghost:    { hp: 50,  dmg: 11, speed: 4.8, aggro: 30, atkR: 2.2, cd: 1.4, r: 0.5, floats: true,
               loot: { incense: 2 }, nocturnal: 'vanish', noCollide: true, make: makeGhost, name: 'Ghost' },
   werewolf: { hp: 650, dmg: 38, speed: 8.5, aggro: 42, atkR: 2.9, cd: 1.5, r: 1.1, boss: true,
@@ -186,6 +196,7 @@ export class Creature {
     this.wanderTo = null;
     this.atkTimer = 0; this.wanderTimer = 0; this.blockedTime = 0;
     this.raider = !!opts.raider; // raiders march on the village
+    this.timid = !!opts.timid;   // probes the light but won't cross into it
     this.packId = opts.packId || 0;
     this.fig = d.make();
     this.mesh = this.fig.group;
@@ -200,6 +211,7 @@ export class Creature {
     this.hp -= amount;
     this.hitT = 0.18; // directional flinch (animation bible §13: readable hit reactions)
     this.hitDir = from && from.pos ? Math.sign((from.pos.x - this.pos.x) || 1) : 1;
+    this._showHpBar();
     // taming loop: hurt a wild beast below a quarter health and it breaks —
     // it stops fighting and can be bound (hold E with 1 incense + 2 meat)
     if (this.def.tameable && !this.weakened && this.hp > 0 && this.hp <= this.maxHp * 0.25) {
@@ -215,6 +227,29 @@ export class Creature {
         if (c.packId === this.packId && !c.dead) { c.target = from; c.state = 'chase'; }
     }
     if (this.hp <= 0) this.die(from);
+  }
+
+  // a brief health sliver above the head after a hit — feedback, not clutter
+  _showHpBar() {
+    if (this.def.boss) return; // the boss has the big bar
+    if (!this._hpCanvas) {
+      this._hpCanvas = document.createElement('canvas');
+      this._hpCanvas.width = 64; this._hpCanvas.height = 8;
+      this._hpTex = new THREE.CanvasTexture(this._hpCanvas);
+      const mat = new THREE.SpriteMaterial({ map: this._hpTex, depthTest: false });
+      this._hpSprite = new THREE.Sprite(mat);
+      this._hpSprite.scale.set(1.15, 0.14, 1);
+      this._hpSprite.position.y = (this.def.r || 0.5) * 2 + 1.6;
+      this.mesh.add(this._hpSprite);
+    }
+    const c = this._hpCanvas.getContext('2d');
+    c.clearRect(0, 0, 64, 8);
+    c.fillStyle = 'rgba(10,8,8,0.75)'; c.fillRect(0, 0, 64, 8);
+    c.fillStyle = this.weakened ? '#c9a03a' : '#a03030';
+    c.fillRect(1, 1, 62 * Math.max(0, this.hp / this.maxHp), 6);
+    this._hpTex.needsUpdate = true;
+    this._hpSprite.visible = true;
+    this._hpBarT = 1.8;
   }
 
   die() {
@@ -234,6 +269,11 @@ export class Creature {
       G.werewolfSlain = true;
       G.ui.log('★ THE WHITE WEREWOLF HAS FALLEN. The wilderness bows to no beast tonight. ★');
       G.ui.banner('LEGEND OF THE FRONTIER', 'You have slain the terror of the north.');
+      sfx('levelup');
+      // the epilogue: the game acknowledges what this took — then the frontier
+      // answers. The dead do not forgive a broken crown: red moons come faster now.
+      G.redMoon.nextDay = Math.min(G.redMoon.nextDay, G.day + 3);
+      setTimeout(() => G.ui.showEpilogue(), 2500);
     }
   }
 
@@ -275,6 +315,25 @@ export class Creature {
     if (this.dead) return;
     const d = this.def;
     const night = isNight();
+
+    // hit-feedback hp sliver fades out
+    if (this._hpBarT > 0) {
+      this._hpBarT -= dt;
+      if (this._hpBarT <= 0 && this._hpSprite) this._hpSprite.visible = false;
+    }
+
+    // --- the timid probe (first-night beat): circles the light, never enters ---
+    if (this.timid) {
+      const fire = G.buildings.find(b => b.type === 'campfire' && !b.destroyed);
+      if (fire && dist2d(this.pos.x, this.pos.z, fire.x, fire.z) < 17) {
+        this.target = null; this.state = 'wander';
+        const away = Math.atan2(this.pos.x - fire.x, this.pos.z - fire.z);
+        this._moveToward(this.pos.x + Math.sin(away) * 12, this.pos.z + Math.cos(away) * 12,
+          dt, d.speed * 0.8);
+        this._settle(dt);
+        return;
+      }
+    }
 
     // --- nocturnal handling ---
     if (!night) {
@@ -358,9 +417,10 @@ export class Creature {
     // --- bandit raiders steal from Storage Chests and retreat (brief §11) ---
     if (this.raider && !this.target && !this.dead) {
       if (this.stole) {
-        // escape west along the road with the loot
-        this._moveToward(-190, 40, dt, d.speed);
-        if (this.pos.x < -185) { this.dead = true; G.scene.remove(this.mesh); }
+        // escape along the road with the loot: bandits west, bailiffs east to the Kingdom
+        const ex = this.type === 'bailiff' ? 190 : -190;
+        this._moveToward(ex, 40, dt, d.speed);
+        if (Math.abs(this.pos.x) > 185) { this.dead = true; G.scene.remove(this.mesh); }
         this._settle(dt);
         this.atkTimer -= dt;
         this.target = this._acquireTarget(); // fight back if intercepted
@@ -386,7 +446,10 @@ export class Creature {
             this.stolenLoad = (this.stolenLoad || 0) + taken;
             if (taken === 0 || this.stolenLoad >= 8) {
               this.stole = true;
-              if (this.stolenLoad > 0) G.ui.log(`A bandit made off with ${this.stolenLoad} goods from your storage!`);
+              if (this.stolenLoad > 0)
+                G.ui.log(this.type === 'bailiff'
+                  ? `A bailiff seized ${this.stolenLoad} goods for the crown's ledger.`
+                  : `A bandit made off with ${this.stolenLoad} goods from your storage!`);
             }
           }
         }
@@ -602,6 +665,7 @@ export function pickupLoot(l) {
     if (got > 0) parts.push(`+${got} ${k}`);
   }
   if (parts.length) G.ui.log(`Looted: ${parts.join(', ')}`);
+  sfx('pickup');
   G.scene.remove(l.mesh);
   G.loots.splice(G.loots.indexOf(l), 1);
 }
@@ -726,8 +790,26 @@ export function banditRaid() {
   }
   G.raidActive = true;
   recordMemory('raid');
+  sfx('horn');
   G.ui.log('⚔ BANDIT RAID! Torchlight approaches from the west road!');
   G.ui.banner('RAID', 'Bandits march on your settlement!');
+}
+
+// the Kingdom collects by force: miss the levy twice and bailiffs march at dusk.
+// They fight like soldiers, steal food like raiders, and leave when laden.
+export function kingdomBailiffs() {
+  const n = 2 + Math.max(1, G.stage);
+  for (let i = 0; i < n; i++) {
+    const b = spawn('bailiff', 172 - i * 4, POI.roadZ - 6, { raider: true });
+    b.state = 'chase';
+  }
+  G.raidActive = true;
+  G.taxes.missed = 0;
+  G.taxes.bailiffsDue = false;
+  recordMemory('taxes');
+  sfx('horn');
+  G.ui.log('⚔ The Kingdom\'s bailiffs march up the east road — they mean to take what is owed.');
+  G.ui.banner('THE KINGDOM COLLECTS', 'Pay your levies, or fight the crown.');
 }
 
 // wildlife replenishes at dawn so the map never empties

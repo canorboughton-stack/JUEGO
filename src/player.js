@@ -3,12 +3,14 @@ import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, resolveCollisions, isNight } from './state.js';
 import { makeCharacter, addSword, pickupLoot } from './entities.js';
 import { buildState, tryPlace } from './buildings.js';
-import { FOOD_TYPES } from './storage.js';
+import { FOOD_TYPES, RESOURCES } from './storage.js';
 import { bindCreature } from './taming.js';
 import { fireArrow } from './villagers.js';
 import { bx } from './models.js';
-import { campBanditsAlive, plunderBanditStash, ruinsGhoulsAlive, plunderReliquary } from './entities.js';
-import { POI } from './world.js';
+import { campBanditsAlive, plunderBanditStash, ruinsGhoulsAlive, plunderReliquary,
+         dropLoot } from './entities.js';
+import { POI, zoneAt, inLake } from './world.js';
+import { sfx } from './audio.js';
 
 // weapons are earned, not given (ARK-style): club -> iron sword -> hunting bow
 const WEAPONS = ['club', 'sword', 'bow'];
@@ -124,6 +126,7 @@ export class Player {
     this.atkTimer = 0.55;
     this.atkAnim = 0.35;
     this.st -= 12;
+    sfx('swing');
     const dmg = MELEE_DMG[this.weapon] || 14;
     // face camera direction when striking
     this.facing = Math.atan2(this.viewDir.x, this.viewDir.z);
@@ -131,6 +134,7 @@ export class Player {
     setTimeout(() => {
       if (this.dead) return;
       const fx = Math.sin(this.facing), fz = Math.cos(this.facing);
+      let connected = false;
       for (const c of G.creatures) {
         if (c.dead) continue;
         const dx = c.pos.x - this.pos.x, dz = c.pos.z - this.pos.z;
@@ -141,8 +145,15 @@ export class Player {
             c.takeDamage(dmg, this);
             // knockback
             c.pos.x += (dx / d) * 0.7; c.pos.z += (dz / d) * 0.7;
+            connected = true;
           }
         }
+      }
+      if (connected) {
+        // combat feel: a heartbeat of hit-stop and a crosshair tick on contact
+        sfx('hit');
+        G.hitstop = 0.055;
+        G.ui.hitMarker();
       }
     }, 140);
   }
@@ -164,11 +175,13 @@ export class Player {
     this.atkAnim = 0.3;
     this.st -= 8;
     G.playerInv.arrows--;
+    sfx('arrow');
     this.facing = Math.atan2(this.viewDir.x, this.viewDir.z);
     const from = this.pos.clone().add(new THREE.Vector3(0, 1.5, 0));
     if (best) {
       fireArrow(from, best.pos.clone().add(new THREE.Vector3(0, 0.9, 0)));
       best.takeDamage(16, this);
+      G.ui.hitMarker();
     } else {
       // loose into the dark anyway — arrows miss when nothing is lined up
       fireArrow(from, from.clone().add(new THREE.Vector3(
@@ -179,7 +192,7 @@ export class Player {
   // dodge (animation bible §13): a short directional sidestep with i-frames —
   // feet stay grounded, made for repositioning. NOT a long souls roll.
   roll() {
-    if (this.rollTimer > 0 || this.st < 15) return;
+    if (this.rollTimer > 0 || this.st < 15 || this.wading) return;
     this.st -= 15;
     this.rollTimer = 0.28;
     const mv = this._moveInput();
@@ -192,7 +205,8 @@ export class Player {
     if (this.blocking && this.st > 6) {
       n *= 0.28;
       this.st = Math.max(0, this.st - 9);
-    }
+      sfx('block');
+    } else sfx('hurt');
     if ((G.playerInv.hidearmor || 0) > 0) n *= 0.72; // layered leather takes the edge off
     this.hp -= n;
     if (this.ritualT > 0) { this.ritualT = 0; G.ui.log('The binding ritual was broken!'); }
@@ -203,7 +217,23 @@ export class Player {
   _die() {
     this.dead = true;
     this.hp = 0;
-    G.ui.showDeath(true);
+    sfx('death');
+    // ARK-style corpse run: a quarter of every carried resource spills into a
+    // satchel where you fell — go back for it before someone else does.
+    // Your sword stays on your belt (equipment is never lost).
+    const dropped = {};
+    for (const k of RESOURCES) {
+      const lose = Math.floor((G.playerInv[k] || 0) * 0.25);
+      if (lose > 0) { dropped[k] = lose; G.playerInv[k] -= lose; }
+    }
+    let summary = 'You fell with empty pockets — nothing was lost.';
+    if (Object.keys(dropped).length) {
+      dropLoot(this.pos.x, this.pos.z, dropped);
+      const where = zoneAt(this.pos.x, this.pos.z).name;
+      summary = `Your satchel spilled where you fell — <b>${Object.entries(dropped)
+        .map(([k, v]) => `${v} ${k}`).join(', ')}</b> waits in ${where}.`;
+    }
+    G.ui.showDeath(true, summary);
     document.exitPointerLock();
   }
 
@@ -214,10 +244,6 @@ export class Player {
     this.hp = this.maxHp * 0.6;
     this.st = this.maxSt;
     this.hunger = Math.max(30, this.hunger);
-    // the frontier taxes failure: lose a fifth of carried RESOURCES —
-    // your sword stays on your belt (equipment is never lost)
-    for (const k of FOOD_TYPES.concat(['wood', 'stone', 'hide', 'incense']))
-      G.playerInv[k] = Math.floor(G.playerInv[k] * 0.8);
     this.dead = false;
     G.ui.showDeath(false);
     G.ui.log('You wake by the campfire, lighter of pocket and heavier of heart.');
@@ -230,6 +256,7 @@ export class Player {
     if (!food) { G.ui.log('No food in your pack — carry meat, corn or cabbage.'); return; }
     if (this.hunger > 92) { G.ui.log('You are not hungry.'); return; }
     G.playerInv[food]--;
+    sfx('eat');
     const cooked = food === 'cookedmeat';
     this.hunger = Math.min(this.maxHu, this.hunger + (cooked ? 45 : 30));
     this.hp = Math.min(this.maxHp, this.hp + (cooked ? 15 : 8));
@@ -259,7 +286,29 @@ export class Player {
     // --- movement ---
     let speed = 5.6;
     const mv = this._moveInput();
-    const sprinting = k['ShiftLeft'] && this.st > 1 && mv.lengthSq() > 0;
+    // water rules: lakes are real — you wade slow and deep water tires you out
+    const groundY = G.world.h(this.pos.x, this.pos.z);
+    const wasWading = this.wading;
+    this.wading = inLake(this.pos.x, this.pos.z) && groundY < -0.8;
+    const deepWater = this.wading && groundY < -1.9;
+    this._deep = deepWater; // deep water also stops stamina recovery
+    if (this.wading && !wasWading) sfx('splash');
+    if (this.wading) speed *= 0.45;
+    if (deepWater) {
+      this.st = Math.max(0, this.st - dt * 6);
+      if (this.st <= 0) {
+        this.hp -= dt * 4;
+        this._drownT = (this._drownT || 0) - dt;
+        if (this._drownT <= 0) { this._drownT = 3; G.ui.log('⚠ The deep water is pulling the strength out of you — get to shore!'); }
+        if (this.hp <= 0) { this._die(); return; }
+      }
+    }
+    // steep ground fights back: hard uphill grades cut your pace
+    if (mv.lengthSq() > 0.01 && !this.wading) {
+      const ahead = G.world.h(this.pos.x + mv.x * 1.2, this.pos.z + mv.z * 1.2);
+      if (ahead - groundY > 0.65) speed *= 0.5;
+    }
+    const sprinting = k['ShiftLeft'] && this.st > 1 && mv.lengthSq() > 0 && !this.wading;
     if (sprinting) { speed *= 1.75; this.st = Math.max(0, this.st - dt * 11); }
 
     if (this.rollTimer > 0) {
@@ -292,9 +341,21 @@ export class Player {
     if (this.blocking || this.atkAnim > 0 || buildState.active)
       this.facing = Math.atan2(this.viewDir.x, this.viewDir.z);
 
-    this.pos.y = G.world.h(this.pos.x, this.pos.z);
+    // in water you float near the surface instead of strolling the lakebed
+    this.pos.y = this.wading
+      ? Math.max(G.world.h(this.pos.x, this.pos.z), -1.65)
+      : G.world.h(this.pos.x, this.pos.z);
     this.mesh.position.copy(this.pos);
     this.mesh.rotation.y = this.facing;
+
+    // the Grey Peaks are the edge of the world — say so instead of a mute wall
+    if (Math.abs(this.pos.x) > 194.4 || Math.abs(this.pos.z) > 194.4) {
+      this._edgeT = (this._edgeT || 0) - dt;
+      if (this._edgeT <= 0) {
+        this._edgeT = 8;
+        G.ui.log('The Grey Peaks close in — no one crosses them. The valley is your world.');
+      }
+    }
 
     // --- animation ---
     const sw = mv.lengthSq() > 0.01 && this.rollTimer <= 0 ? Math.sin(this.walkPhase || 0) * 0.55 : 0;
@@ -314,7 +375,7 @@ export class Player {
 
     // --- timers & vitals ---
     this.atkTimer -= dt;
-    if (!sprinting && this.rollTimer <= 0)
+    if (!sprinting && this.rollTimer <= 0 && !this._deep)
       this.st = Math.min(this.maxSt, this.st + dt * (this.blocking ? 4 : 14));
     this.hungerTick += dt;
     if (this.hungerTick > 7) {
@@ -444,6 +505,7 @@ export class Player {
           if ((G.playerInv.meat || 0) > 0) {
             G.playerInv.meat--;
             G.playerInv.cookedmeat = (G.playerInv.cookedmeat || 0) + 1;
+            sfx('cook');
             G.ui.log('The fat sizzles — +1 cooked meat.');
           }
         }
@@ -460,6 +522,7 @@ export class Player {
           this.ritualT = 0;
           G.playerInv.incense -= 1;
           G.playerInv.meat -= 2;
+          sfx('levelup');
           bindCreature(best.obj);
         }
       } else if (best.hold) {
@@ -470,8 +533,15 @@ export class Player {
           : 1.2;
         this.gatherHold += dt;
         holdProgress = this.gatherHold / holdTime;
+        // rhythmic work sounds while the hold runs
+        this._workT = (this._workT || 0) - dt;
+        if (this._workT <= 0) {
+          this._workT = 0.45;
+          sfx(k === 'tree' ? 'chop' : k === 'rock' ? 'mine' : 'gather');
+        }
         if (this.gatherHold >= holdTime) {
           this.gatherHold = 0;
+          sfx('pickup');
           G.world.harvest(best.obj.kind, best.obj.i);
         }
       } else if (!this._ePressed) {
@@ -510,6 +580,7 @@ export class Player {
     if (this._hammerT <= 0) {
       this._hammerT = 0.7;
       this.atkAnim = 0.35;
+      sfx('hammer');
     }
   }
 

@@ -54,6 +54,18 @@
   /* ---- Crosshair & prompt ---- */
   #crosshair { left:50%; top:50%; width:5px; height:5px; margin:-2px 0 0 -2px; border-radius:50%;
     background:#e8e0cc99; box-shadow:0 0 3px #000; }
+  #hitmark { left:50%; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; opacity:0;
+    transition:opacity .12s; color:#e8d9a8; font-size:16px; line-height:16px; text-align:center;
+    text-shadow:0 0 4px #000; }
+  #hitmark::before { content:'✕'; }
+
+  /* ---- Compass strip ---- */
+  #compass { left:50%; top:38px; width:340px; margin-left:-170px; height:20px; overflow:hidden;
+    background:#00000055; border:1px solid #3a344455; border-top:none; }
+  #compassInner { position:relative; width:100%; height:100%; }
+  .cmark { position:absolute; top:1px; transform:translateX(-50%); font-size:13px; letter-spacing:1px;
+    color:#cfc7ae; text-shadow:0 1px 3px #000; }
+  .cmark.chome { color:#e8d9a8; font-size:14px; }
   #prompt { left:0; right:0; top:58%; text-align:center; font-size:16px; color:#e8d9a8; text-shadow:0 1px 3px #000;
     letter-spacing:1px; }
   #gatherBar { left:50%; top:63%; width:160px; margin-left:-80px; height:7px; background:#00000088;
@@ -72,6 +84,7 @@
   .bslot .bkey { color:#c9b47a; font-size:13px; }
   .bslot .bname { font-size:12px; color:#e8e0cc; margin:2px 0; }
   .bslot .bcost { color:#8f879e; }
+  .bhint { margin-top:6px; font-size:11px; color:#8f879e; letter-spacing:1px; text-shadow:0 1px 2px #000; }
   .bslot .bdesc { color:#6e6880; font-size:10px; margin-top:2px; line-height:1.3; }
 
   /* ---- Alert chip ---- */
@@ -142,6 +155,7 @@
 <div id="deathScreen">
   <h1>YOU HAVE FALLEN</h1>
   <p>The frontier claims another soul... but the settlement endures.</p>
+  <p id="deathLost" style="color:#c9b47a;max-width:520px"></p>
   <button class="btn" id="btnRespawn">RISE AGAIN</button>
 </div>
 
@@ -161,6 +175,8 @@
 <div class="hud" id="zoneBanner"></div>
 <div class="hud" id="zoneSub"></div>
 <div class="hud" id="crosshair"></div>
+<div class="hud" id="hitmark"></div>
+<div class="hud" id="compass"><div id="compassInner"></div></div>
 <div class="hud" id="prompt"></div>
 <div class="hud" id="gatherBar"><div id="gatherFill"></div></div>
 <div class="hud" id="log"></div>
@@ -176,14 +192,18 @@
   <div><b>Right Mouse</b> Block (hold)</div>
   <div><b>E (hold)</b> Gather / recruit / loot</div>
   <div><b>F</b> Eat food (+hunger, +health)</div>
-  <div><b>B</b> Build menu &nbsp;<b>R</b> rotate &nbsp;<b>X</b> demolish</div>
+  <div><b>B</b> Build menu &middot; <b>scroll / &larr; &rarr;</b> browse all buildings &middot;
+    <b>1-0</b> jump &middot; <b>R</b> rotate &middot; <b>X</b> demolish</div>
   <div><b>E (hold) at site</b> Hammer: construct / repair / douse fire</div>
   <div><b>Tab</b> Settlement management panel</div>
-  <div><b>K</b> Save game &nbsp;&middot;&nbsp; <b>H</b> close help</div>
+  <div><b>M</b> Mute sound &nbsp;&middot;&nbsp; <b>K</b> Save game &nbsp;&middot;&nbsp; <b>H</b> close help</div>
   <div style="margin-top:10px;color:#8f879e;font-style:italic">The campfire claims 60m of territory —
   build only inside it, never on the King's Road. Deposit resources in Storage Chests; farmers carry
-  their harvest there, villagers eat from it daily. Guards need crafted weapons. Ghosts fear torchlight.
-  The far north belongs to something worse.</div>
+  their harvest there, woodcutters and stonecutters haul timber and rock, villagers eat from storage
+  daily. Guards need crafted weapons. Ghosts fear torchlight. Lakes are deep — wading is slow and deep
+  water drains you. Die, and a quarter of your pack spills where you fell: go back for the satchel.
+  Miss the Kingdom's levy twice and bailiffs come to collect at swordpoint. The far north belongs to
+  something worse — and the compass ⌂ always points home.</div>
 </div>
 
 <script type="module" src="src/main.js"></script>

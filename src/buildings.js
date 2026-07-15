@@ -11,6 +11,7 @@ import { assignJobs } from './villagers.js';
 import { emptyInv, canAffordCombined, payCombined, costLabel } from './storage.js';
 import { inTerritory, onRoadBuffer, refreshTerritory, showTerritory } from './territory.js';
 import { noteBuildingDamage } from './alerts.js';
+import { sfx } from './audio.js';
 
 const MODULAR = ['foundation', 'wallpiece', 'windowwall', 'doorpiece'];
 const SUPPORTS = ['foundation', 'wallpiece', 'windowwall', 'doorpiece', 'gate'];
@@ -641,6 +642,11 @@ export function selectSlot(i) {
   G.ui.updateBuildMenu();
 }
 
+// browse the whole catalog without a mouse: wheel / arrows / brackets cycle
+export function cycleSlot(dir) {
+  selectSlot((buildState.sel + dir + BUILD_ORDER.length) % BUILD_ORDER.length);
+}
+
 export function rotateGhost() {
   const modular = MODULAR.includes(BUILD_ORDER[buildState.sel]);
   buildState.rot += modular ? Math.PI / 2 : Math.PI / 4;
@@ -682,6 +688,7 @@ export function tryPlace() {
   }
   payCombined(BUILDING_DEFS[type].cost);
   const staged = !!BUILDING_DEFS[type].buildTime;
+  sfx('build');
   placeBuilding(type, buildState.gx, buildState.gz, buildState.rot, staged ? 0 : 1);
   G.ui.log(staged
     ? `${BUILDING_DEFS[type].name} frame raised — hold E at the site to build it.`

@@ -106,10 +106,18 @@ export function collectTaxes() {
   }
   recordMemory('taxes');
   if (paid >= due) {
-    G.taxes.paid = true; G.taxes.owed = 0;
+    G.taxes.paid = true; G.taxes.owed = 0; G.taxes.missed = 0;
     G.ui.log(`The Kingdom's tax collector took ${due} food. The ledger is settled.`);
   } else {
     G.taxes.paid = false; G.taxes.owed = due - paid;
-    G.ui.log(`⚠ You could not pay the Kingdom's levy (${G.taxes.owed} food short). They will remember.`);
+    G.taxes.missed = (G.taxes.missed || 0) + 1;
+    // the Kingdom's memory is real: two missed levies and the bailiffs march
+    if (G.taxes.missed >= 2) {
+      G.taxes.bailiffsDue = true;
+      G.ui.log(`⚠ Second levy missed. The Kingdom's patience is spent — bailiffs will come at dusk.`);
+      G.ui.banner('THE CROWN\'S PATIENCE ENDS', 'Bailiffs march at dusk. Pay in food — or in blood.');
+    } else {
+      G.ui.log(`⚠ You could not pay the Kingdom's levy (${G.taxes.owed} food short). They will remember.`);
+    }
   }
 }

@@ -25,7 +25,8 @@ export const G = {
 
   popCap: 0,       // villager capacity from houses (beds)
   stage: -1,       // settlement progression stage (-1 wilderness, 0..3 per brief §15)
-  taxes: { nextDay: 0, owed: 0, paid: true },
+  taxes: { nextDay: 0, owed: 0, paid: true, missed: 0, bailiffsDue: false },
+  hitstop: 0,        // brief world-freeze on a confirmed player hit (combat feel)
   uiOpen: false,   // a DOM panel (storage/craft/recruit/settlement) is open
   werewolfSlain: false,
   raidActive: false,
