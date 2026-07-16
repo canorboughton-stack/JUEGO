@@ -115,9 +115,17 @@ export const CREATURE_DEFS = {
   blackdog: { hp: 35,  dmg: 15, speed: 9.5, aggro: 32, atkR: 1.9, cd: 0.9, r: 0.5, nocturnal: 'vanish',
               loot: { hide: 1, bones: 1, monsterpart: 1 }, prefs: ['livestock', 'villager', 'player'],
               make: () => {
-                const b = makeBeast(1.3, 0.95, 0.55, 0x14141a, 0x0c0c10); // broader chest
-                bx(b.group, 0.62, 0.45, 0.45, new THREE.MeshLambertMaterial({ color: 0x14141a }),
-                  0, 0.72, -0.45);  // heavy chest mass
+                // creature brief §17: a corrupted feral DOG, not a demon and not
+                // a recolored wolf — heavy chest, dropped ears, heavy muzzle,
+                // scarred face; the only unnatural note is the dim red eye
+                const b = makeBeast(1.3, 0.95, 0.55, 0x14141a, 0x0c0c10);
+                const coat = new THREE.MeshLambertMaterial({ color: 0x14141a });
+                bx(b.group, 0.62, 0.45, 0.45, coat, 0, 0.72, -0.45);  // heavy chest mass
+                for (const sx of [-1, 1]) {                            // dropped ears
+                  const e = bx(b.head, 0.09, 0.16, 0.04, coat, sx * 0.16, 0.14, 0.02);
+                  e.rotation.z = sx * 0.55;
+                }
+                bx(b.head, 0.16, 0.12, 0.18, coat, 0, -0.06, -0.28);   // heavy muzzle
                 const eye = new THREE.MeshBasicMaterial({ color: 0x8a2222 }); // slightly unnatural
                 for (const sx of [-1, 1]) {
                   const e = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.04, 0.02), eye);
@@ -366,6 +374,18 @@ export class Creature {
         if (dh < 6) this.state = 'wander';
         this._settle(dt); this._updateBossBar(); return;
       }
+    }
+
+    // --- ghost manifestation (creature brief §17): barely-there while it
+    // drifts, it GATHERS into visibility only when it hunts ---
+    if (this.type === 'ghost' && night) {
+      const want = this.target ? 0.62 : 0.22;
+      this._ghostOp = this._ghostOp === undefined ? 0.42
+        : this._ghostOp + (want - this._ghostOp) * Math.min(1, dt * 1.8);
+      this.mesh.traverse(o => {
+        if (o.material && o.material.transparent) o.material.opacity = this._ghostOp;
+        if (o.isPointLight) o.intensity = this._ghostOp * 5; // cold light swells as it comes
+      });
     }
 
     // --- ghosts fear the light: torches & campfires burn them ---

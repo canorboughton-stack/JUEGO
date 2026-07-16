@@ -524,6 +524,86 @@ export class World {
     });
     G.scene.add(stemIM, capIM);
 
+    // --- stumps: a felled tree leaves proof (tree bible: stump persistence).
+    // One instanced stump per harvestable tree; shown while the tree is down.
+    const stumpGeo = new THREE.CylinderGeometry(0.2, 0.3, 0.45, 6);
+    const stumpMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    this.stumpIM = new THREE.InstancedMesh(stumpGeo, stumpMat, this.trees.length);
+    this.trees.forEach((t, i) => {
+      t.stumpIdx = i;
+      dummy.position.set(t.x, terrainHeight(t.x, t.z) + 0.2, t.z);
+      dummy.rotation.set(0, Math.random() * 6, 0);
+      dummy.scale.setScalar(0.001); // hidden until the tree falls
+      dummy.updateMatrix();
+      this.stumpIM.setMatrixAt(i, dummy.matrix);
+      vary(this.stumpIM, i, t.kind === 'birch' ? 0xcac4b2 : 0x6a5238, 0.02, 0.05);
+    });
+    G.scene.add(this.stumpIM);
+    this._growing = []; // trees regrowing after respawn (scale-up animation)
+
+    // --- landmark trees (tree bible): unique shapes that anchor navigation ---
+    // THE ELDER OAK — a huge lone oak on the east meadow rise
+    {
+      const x = 55, z = 28;
+      const t = new THREE.Group();
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.4, 5.2, 8),
+        new THREE.MeshLambertMaterial({ color: 0x4a3a28 }));
+      trunk.position.y = 2.6; trunk.castShadow = true; t.add(trunk);
+      for (const [dx, dy, dz, r] of [[0, 6.4, 0, 3.4], [2.2, 5.4, 1, 2.2], [-2.4, 5.6, -0.8, 2.4], [0.5, 5.0, -2.2, 1.9]]) {
+        const c = new THREE.Mesh(new THREE.SphereGeometry(r, 7, 6),
+          new THREE.MeshLambertMaterial({ color: 0x445e2c }));
+        c.position.set(dx, dy, dz); c.castShadow = true; t.add(c);
+      }
+      t.position.set(x, terrainHeight(x, z), z);
+      G.scene.add(t);
+      G.colliders.push({ x, z, r: 1.5, owner: null });
+    }
+    // THE SPLIT PINE — a lightning-struck giant marking the Southwood mouth
+    {
+      const x = -30, z = 70;
+      const t = new THREE.Group();
+      const barkMat = new THREE.MeshLambertMaterial({ color: 0x3e3226 });
+      const half1 = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.5, 7.5, 6), barkMat);
+      half1.position.set(0.35, 3.6, 0); half1.rotation.z = -0.16; half1.castShadow = true; t.add(half1);
+      const half2 = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.45, 5.4, 6), barkMat);
+      half2.position.set(-0.5, 2.6, 0); half2.rotation.z = 0.34; half2.castShadow = true; t.add(half2);
+      const charred = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.62, 1.4, 6),
+        new THREE.MeshLambertMaterial({ color: 0x1c1814 }));
+      charred.position.y = 0.7; t.add(charred);
+      const tuft = new THREE.Mesh(new THREE.ConeGeometry(1.3, 2.6, 6),
+        new THREE.MeshLambertMaterial({ color: 0x2a4520 }));
+      tuft.position.set(0.7, 7.6, 0); tuft.castShadow = true; t.add(tuft);
+      t.position.set(x, terrainHeight(x, z), z);
+      G.scene.add(t);
+      G.colliders.push({ x, z, r: 0.8, owner: null });
+    }
+    // THE HANGING TREE — a leafless oak by the bandit road; a warning, or a boast
+    {
+      const x = POI.banditCamp.x + 22, z = POI.banditCamp.z + 18;
+      const t = new THREE.Group();
+      const bark = new THREE.MeshLambertMaterial({ color: 0x453a2c });
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.6, 4.6, 6), bark);
+      trunk.position.y = 2.3; trunk.castShadow = true; t.add(trunk);
+      const bough = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 3.4, 5), bark);
+      bough.position.set(1.4, 4.3, 0); bough.rotation.z = Math.PI / 2.25; bough.castShadow = true; t.add(bough);
+      for (const [a, l] of [[0.5, 1.8], [-0.7, 1.4], [2.6, 1.5]]) {
+        const br = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.13, l, 5), bark);
+        br.position.set(Math.cos(a) * 0.7, 4.4 + Math.sin(a) * 0.5, Math.sin(a) * 0.7);
+        br.rotation.set(Math.cos(a) * 0.9, 0, 0.8 + a * 0.3); t.add(br);
+      }
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.3, 4),
+        new THREE.MeshLambertMaterial({ color: 0x8a7a5a }));
+      rope.position.set(2.4, 3.5, 0); t.add(rope);
+      // an empty iron cage swings where the rope ends — the bandits' warning
+      const cage = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.8, 0.55),
+        new THREE.MeshLambertMaterial({ color: 0x3c4046, wireframe: true }));
+      cage.position.set(2.4, 2.5, 0); t.add(cage);
+      t.position.set(x, terrainHeight(x, z), z);
+      t.rotation.y = 0.4;
+      G.scene.add(t);
+      G.colliders.push({ x, z, r: 0.7, owner: null });
+    }
+
     // --- cursed trees: twisted landmarks near the ghost ground (tree bible:
     // "twisted or corrupted by the land, often near ghost zones") ---
     const curseBark = new THREE.MeshLambertMaterial({ color: 0x2c2622 });
@@ -572,6 +652,18 @@ export class World {
     im.instanceMatrix.needsUpdate = true;
   }
 
+  // show or hide the persistent stump left by a felled tree
+  _stumpVis(t, on) {
+    if (t.stumpIdx === undefined) return;
+    const d = new THREE.Object3D();
+    d.position.set(t.x, terrainHeight(t.x, t.z) + 0.2, t.z);
+    d.rotation.y = (t.stumpIdx * 2.39) % 6.28;
+    d.scale.setScalar(on ? t.s * 0.9 : 0.001);
+    d.updateMatrix();
+    this.stumpIM.setMatrixAt(t.stumpIdx, d.matrix);
+    this.stumpIM.instanceMatrix.needsUpdate = true;
+  }
+
   _treeIMs(kind) {
     return kind === 'pine' ? [this.pineTrunkIM, this.pineLeafIM]
       : kind === 'oak' ? [this.oakTrunkIM, this.oakLeafIM]
@@ -579,24 +671,38 @@ export class World {
   }
 
   _restoreTree(ti) {
-    const t = this.trees[ti], dummy = new THREE.Object3D();
+    // regrowth, not teleportation: the stump gives way to a sapling that
+    // scales up to full height over a few seconds (tree bible: regrowth rules)
+    const t = this.trees[ti];
+    this._stumpVis(t, false);
+    this._growing.push({ ti, p: 0.12 });
+    this._growTree(t, 0.12);
+    return;
+  }
+
+  // place a tree's instances at a fraction of full grown size
+  _growTree(t, p) {
+    const dummy = new THREE.Object3D();
     const [trunkIM, leafIM] = this._treeIMs(t.kind);
     const y = terrainHeight(t.x, t.z);
     const trunkY = t.kind === 'pine' ? 1.6 : t.kind === 'oak' ? 1.3 : 2.1;
     const leafY = t.kind === 'pine' ? 4.8 : t.kind === 'oak' ? 3.4 : 4.4;
-    dummy.position.set(t.x, y + trunkY * t.s, t.z);
-    dummy.scale.setScalar(t.s);
+    const s = t.s * p;
+    dummy.position.set(t.x, y + trunkY * s, t.z);
+    dummy.scale.setScalar(s);
     dummy.updateMatrix();
     trunkIM.setMatrixAt(t.idx, dummy.matrix);
+    trunkIM.instanceMatrix.needsUpdate = true;
     if (!t.dead) {
-      dummy.position.y = y + leafY * t.s;
-      if (t.kind === 'oak') dummy.scale.set(t.s, t.s * 0.8, t.s);
-      if (t.kind === 'birch') dummy.scale.set(t.s, t.s * 1.25, t.s);
+      dummy.position.y = y + leafY * s;
+      if (t.kind === 'oak') dummy.scale.set(s, s * 0.8, s);
+      else if (t.kind === 'birch') dummy.scale.set(s, s * 1.25, s);
       dummy.updateMatrix();
       leafIM.setMatrixAt(t.idx, dummy.matrix);
+      leafIM.instanceMatrix.needsUpdate = true;
     }
-    trunkIM.instanceMatrix.needsUpdate = leafIM.instanceMatrix.needsUpdate = true;
   }
+
   _restoreRock(i) {
     const r = this.rocks[i], dummy = new THREE.Object3D();
     dummy.position.set(r.x, terrainHeight(r.x, r.z) + 0.35 * r.s, r.z);
@@ -644,6 +750,7 @@ export class World {
       const t = this.trees[i]; t.alive = false; t.respawn = 100;
       const [trunkIM, leafIM] = this._treeIMs(t.kind);
       this._hideInstance(trunkIM, t.idx); this._hideInstance(leafIM, t.idx);
+      this._stumpVis(t, true); // the stump stays: proof of work done here
       const ci = G.colliders.findIndex(c => c.x === t.x && c.z === t.z && !c.owner);
       if (ci >= 0) G.colliders.splice(ci, 1);
       give('wood', (G.playerInv.axe || 0) > 0 ? 6 : 3);
@@ -673,6 +780,7 @@ export class World {
       t.alive = false; t.respawn = 100;
       const [trunkIM, leafIM] = this._treeIMs(t.kind);
       this._hideInstance(trunkIM, t.idx); this._hideInstance(leafIM, t.idx);
+      this._stumpVis(t, true);
       const ci = G.colliders.findIndex(c => c.x === t.x && c.z === t.z && !c.owner);
       if (ci >= 0) G.colliders.splice(ci, 1);
       return { res: 'wood', n: 4 };
@@ -934,6 +1042,16 @@ export class World {
       G.scene.add(g);
       this.lanternLights.push({ light, box, phase: x });
     }
+    // the worn footpath: bare earth from the founding fire to the King's Road —
+    // NPC feet made this line, and the eye follows it home (ground bible)
+    const pathMat = new THREE.MeshLambertMaterial({ color: 0x6a5b41 });
+    for (let z = 4; z < POI.roadZ - 3; z += 4) {
+      const seg = new THREE.Mesh(new THREE.BoxGeometry(1.5 + Math.random() * 0.5, 0.05, 4.4), pathMat);
+      const wob = Math.sin(z * 0.5) * 0.5;
+      seg.position.set(wob, terrainHeight(wob, z + 2) + 0.03, z + 2);
+      G.scene.add(seg);
+    }
+
     // a broken cart on the west road: one wheel gone, cargo long since taken
     const cart = new THREE.Group();
     const cartWood = new THREE.MeshLambertMaterial({ color: 0x4e4030 });
@@ -998,6 +1116,20 @@ export class World {
       color: 0xcdd8e8, size: 1.6, transparent: true, opacity: 0, fog: false,
       sizeAttenuation: false }));
     G.scene.add(this.stars);
+
+    // ash motes for Red Moon nights: slow-falling dark-red dust around the player
+    const ashN = 240;
+    this._ashPos = new Float32Array(ashN * 3);
+    for (let i = 0; i < ashN; i++) {
+      this._ashPos[i * 3] = (Math.random() - 0.5) * 60;
+      this._ashPos[i * 3 + 1] = Math.random() * 22;
+      this._ashPos[i * 3 + 2] = (Math.random() - 0.5) * 60;
+    }
+    const ashGeo = new THREE.BufferGeometry();
+    ashGeo.setAttribute('position', new THREE.BufferAttribute(this._ashPos, 3));
+    this.ash = new THREE.Points(ashGeo, new THREE.PointsMaterial({
+      color: 0x9a5348, size: 0.14, transparent: true, opacity: 0 }));
+    G.scene.add(this.ash);
   }
 
   // Color keys for the day cycle — the lighting bible made data:
@@ -1007,16 +1139,16 @@ export class World {
   //   night = deep blue ambient, very low visibility; fire is the only warmth
   // fogN/fogF drive how far you can see; sunC tints the key light.
   static SKY = [
-    { t: 0.00, sky: 0x060911, fog: 0x070a14, sun: 0.0, sunC: 0xf2efe6, hemi: 0.055, fogN: 16, fogF: 95 },
-    { t: 0.20, sky: 0x0a0e1e, fog: 0x0b1020, sun: 0.0, sunC: 0xf2efe6, hemi: 0.07, fogN: 18, fogF: 105 },
+    { t: 0.00, sky: 0x060911, fog: 0x070a14, sun: 0.0, sunC: 0xf2efe6, hemi: 0.075, fogN: 16, fogF: 112 },
+    { t: 0.20, sky: 0x0a0e1e, fog: 0x0b1020, sun: 0.0, sunC: 0xf2efe6, hemi: 0.085, fogN: 18, fogF: 120 },
     { t: 0.25, sky: 0x6b7890, fog: 0x8a8a90, sun: 0.7, sunC: 0xe8d8be, hemi: 0.42, fogN: 40, fogF: 230 },
     { t: 0.30, sky: 0x8ba0b5, fog: 0x97a3ab, sun: 1.4, sunC: 0xeee9da, hemi: 0.62, fogN: 55, fogF: 300 },
     { t: 0.42, sky: 0x87a4bf, fog: 0x99a8b4, sun: 2.2, sunC: 0xf2efe6, hemi: 0.9, fogN: 65, fogF: 340 },
     { t: 0.58, sky: 0x87a4bf, fog: 0x99a8b4, sun: 2.2, sunC: 0xf2efe6, hemi: 0.9, fogN: 65, fogF: 340 },
     { t: 0.70, sky: 0x9d8f93, fog: 0x8d8390, sun: 1.5, sunC: 0xf0d7ae, hemi: 0.62, fogN: 52, fogF: 290 },
     { t: 0.76, sky: 0xa8683e, fog: 0x6d6272, sun: 0.9, sunC: 0xffb070, hemi: 0.38, fogN: 38, fogF: 210 },
-    { t: 0.81, sky: 0x0d1122, fog: 0x0d1224, sun: 0.0, sunC: 0xf2efe6, hemi: 0.075, fogN: 18, fogF: 108 },
-    { t: 1.00, sky: 0x060911, fog: 0x070a14, sun: 0.0, sunC: 0xf2efe6, hemi: 0.055, fogN: 16, fogF: 95 },
+    { t: 0.81, sky: 0x0d1122, fog: 0x0d1224, sun: 0.0, sunC: 0xf2efe6, hemi: 0.09, fogN: 18, fogF: 122 },
+    { t: 1.00, sky: 0x060911, fog: 0x070a14, sun: 0.0, sunC: 0xf2efe6, hemi: 0.075, fogN: 16, fogF: 112 },
   ];
 
   update(dt) {
@@ -1042,6 +1174,14 @@ export class World {
     tick(this.rocks, i => this._restoreRock(i));
     tick(this.bushes, i => this._restoreBush(i));
     tick(this.herbs, i => this._restoreHerb(i));
+
+    // regrowing trees scale up from saplings over a few seconds
+    for (let i = this._growing.length - 1; i >= 0; i--) {
+      const gr = this._growing[i];
+      gr.p = Math.min(1, gr.p + dt * 0.22);
+      this._growTree(this.trees[gr.ti], gr.p);
+      if (gr.p >= 1) this._growing.splice(i, 1);
+    }
 
     // sun position orbits the player so shadows stay crisp
     const t = G.time;
@@ -1095,14 +1235,36 @@ export class World {
     } else {
       this.moon.color.setHex(0x7488b8);
     }
+    let sunI = a.sun + (b.sun - a.sun) * f;
+    let fogFar = a.fogF + (b.fogF - a.fogF) * f;
+    // the Red Moon buildup (lighting bible §19): the day BEFORE, daylight runs
+    // pale and hazy — the world holds its breath before the sky turns
+    if (G.redMoon.warned && !redMoon && sunI > 0.3) {
+      cs.lerp(new THREE.Color(0xb8b4ae), 0.22);
+      cf.lerp(new THREE.Color(0xa8a09a), 0.25);
+      sunI *= 0.82;
+      fogFar *= 0.82;
+    }
     G.scene.background.copy(cs);
     G.scene.fog.color.copy(cf);
     // visibility itself follows the clock: night closes in around you
     G.scene.fog.near = a.fogN + (b.fogN - a.fogN) * f;
-    G.scene.fog.far = a.fogF + (b.fogF - a.fogF) * f;
-    G.sun.intensity = a.sun + (b.sun - a.sun) * f;
+    G.scene.fog.far = fogFar;
+    G.sun.intensity = sunI;
     G.sun.color.copy(new THREE.Color(a.sunC).lerp(new THREE.Color(b.sunC), f));
     G.hemi.intensity = a.hemi + (b.hemi - a.hemi) * f;
+    // ash drifts down under a red sky — never enough to blind, only to unsettle
+    if (this.ash) {
+      this.ash.material.opacity += ((redMoon ? 0.55 : 0) - this.ash.material.opacity) * Math.min(1, dt);
+      if (this.ash.material.opacity > 0.02) {
+        this.ash.position.set(px, 0, pz);
+        for (let i = 0; i < this._ashPos.length; i += 3) {
+          this._ashPos[i + 1] -= dt * (1.1 + (i % 7) * 0.12);
+          if (this._ashPos[i + 1] < 0) this._ashPos[i + 1] = 20 + Math.random() * 3;
+        }
+        this.ash.geometry.attributes.position.needsUpdate = true;
+      }
+    }
     // fires flicker — every flame has its own nervous rhythm
     const fnow = performance.now() * 0.001;
     this.banditFire.intensity = (isNight() ? 9 : 2) *

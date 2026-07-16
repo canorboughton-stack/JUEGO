@@ -165,6 +165,17 @@ export const BUILDING_DEFS = {
         bx(g, 0.58, 0.06, 0.06, MAT.beamLight, 0, 0.5 + i * 0.6, 0.95 + (0.5 + i * 0.6) * -0.1 + 0.22);
       // the tower flies the settlement's banner — visible from the fields
       kingdomBanner(g, 1.1, 5.0, -1.1, 1.3);
+      // watchtower board §12: the platform shows daily use — arrow crate,
+      // water bucket, a stool, and a torch bracket (gameplay sockets made visible)
+      bx(g, 0.45, 0.3, 0.45, MAT.beamLight, -0.8, 4.65, -0.8);           // arrow crate
+      for (let i = 0; i < 3; i++)
+        bx(g, 0.03, 0.5, 0.03, MAT.beam, -0.86 + i * 0.07, 4.98, -0.8, 0, 0.12 * i);
+      cyl(g, 0.14, 0.17, 0.22, 7, MAT.beamLight, 0.75, 4.6, -0.75);      // water bucket
+      bx(g, 0.3, 0.08, 0.3, MAT.beam, -0.75, 4.62, 0.75);                // guard stool
+      cyl(g, 0.04, 0.04, 0.5, 4, MAT.beam, 1.05, 5.3, 1.05, 0, 0.3);     // torch bracket
+      const wf = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 5),
+        new THREE.MeshBasicMaterial({ color: 0xff8833 }));
+      wf.position.set(1.13, 5.62, 1.08); g.add(wf);
       return g;
     },
   },
@@ -428,6 +439,44 @@ export class Building {
     this.mesh.position.set(x, G.world.h(x, z), z);
     this.mesh.rotation.y = rotY;
     G.scene.add(this.mesh);
+    // ground wear (art brief §4): buildings trample the grass around them,
+    // and fire scorches the earth beneath it. Attached to the mesh so it
+    // lives and dies with the structure.
+    if (!d.modular && d.r > 0.5) {
+      const scorch = type === 'campfire';
+      const disc = new THREE.Mesh(
+        new THREE.CircleGeometry(scorch ? 1.7 : d.r + 1.1, 14),
+        new THREE.MeshLambertMaterial({ color: scorch ? 0x2b2520 : 0x5b5340,
+          transparent: true, opacity: scorch ? 0.85 : 0.5 }));
+      disc.rotation.x = -Math.PI / 2;
+      disc.position.y = 0.025;
+      this.mesh.add(disc);
+    }
+    // damage states (art brief §10): missing boards at 60%, smoke at 30% —
+    // never just a darker mesh
+    if (!d.modular && (d.size || d.r >= 1) && type !== 'campfire') {
+      this._wearFX = new THREE.Group();
+      const patch = new THREE.MeshLambertMaterial({ color: 0x241d15 });
+      const w = d.size ? d.size.w : d.r * 1.6, h = d.size ? d.size.h : 2;
+      for (let i = 0; i < 3; i++) {
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.4 + (i % 2) * 0.3, 0.55, 0.08), patch);
+        const a = (this.id * 2.4 + i * 2.1) % 6.28;
+        p.position.set(Math.cos(a) * w * 0.32, 0.5 + (i * 0.53) % Math.max(0.8, h - 0.8),
+          Math.sin(a) * w * 0.32);
+        p.rotation.y = a;
+        this._wearFX.add(p);
+      }
+      this._wearFX.visible = false;
+      this.mesh.add(this._wearFX);
+      this._smoke = [];
+      for (let i = 0; i < 2; i++) {
+        const s = new THREE.Mesh(new THREE.SphereGeometry(0.22, 5, 4),
+          new THREE.MeshLambertMaterial({ color: 0x3a3a3c, transparent: true, opacity: 0.5 }));
+        s.visible = false;
+        this.mesh.add(s);
+        this._smoke.push(s);
+      }
+    }
     if (this.built < 1) {
       this.mesh.visible = false;
       this.frame = makeFrame(d.size.w, d.size.h, d.size.d);
@@ -544,12 +593,32 @@ export class Building {
       }
       this._fireFX.scale.setScalar(0.4 + this.fire);
     }
+    // damage states drive visible wear: missing boards, then smoke — the
+    // player reads a building's health from across the yard
+    const frac = this.hp / this.maxHp;
+    if (this._wearFX) this._wearFX.visible = this.built >= 1 && !this.destroyed && frac < 0.6;
+    if (this._smoke) {
+      const smoking = this.built >= 1 && !this.destroyed && frac < 0.3;
+      const tn2 = performance.now() * 0.001;
+      this._smoke.forEach((s, i) => {
+        s.visible = smoking;
+        if (smoking) {
+          const cyc = (tn2 * 0.5 + i * 0.5) % 1;
+          s.position.set(Math.sin(tn2 + i * 3) * 0.3, 1.2 + cyc * 2.4, Math.cos(tn2 * 0.7 + i) * 0.3);
+          s.scale.setScalar(0.5 + cyc * 1.3);
+          s.material.opacity = 0.45 * (1 - cyc);
+        }
+      });
+    }
     // torch / campfire light — each flame flickers to its own nervous rhythm
     // (lighting bible: flicker intensity varies per source; torches gutter
-    // harder in the open than a banked campfire)
+    // harder in the open than a banked campfire). Under a Red Moon fires burn
+    // brighter, and on the warned eve torches are lit early (§19).
     const light = this.mesh.userData.light;
     if (light) {
-      const base = isNight() ? (this.type === 'torch' ? 10 : 12) : 1.2;
+      const redUp = G.redMoon && G.redMoon.active ? 1.35 : 1;
+      const litEarly = G.redMoon && G.redMoon.warned && G.time > 0.68;
+      const base = (isNight() || litEarly) ? (this.type === 'torch' ? 10 : 12) * redUp : 1.2;
       const tn = performance.now() * 0.001, ph = this.id * 2.7;
       const gutter = this.type === 'torch' ? 1.0 : 0.55;
       light.intensity = base * (0.88 +
