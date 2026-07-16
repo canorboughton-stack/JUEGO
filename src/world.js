@@ -4,6 +4,7 @@
 import * as THREE from '../lib/three.module.js';
 import { G, clamp, dist2d, isNight } from './state.js';
 import { playerAdd } from './storage.js';
+import { barkTex, leafTex, stoneTex, groundTex } from './textures.js';
 
 const MAP = 400; // world is MAP x MAP centered at origin
 
@@ -161,7 +162,13 @@ export class World {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+    // detail grain multiplied over the zone tints: soil flecks and worn spots
+    // instead of one smooth green sheet (ground bible)
+    const detail = groundTex().clone();
+    detail.repeat.set(110, 110);
+    detail.needsUpdate = true;
+    const mesh = new THREE.Mesh(geo,
+      new THREE.MeshLambertMaterial({ vertexColors: true, map: detail }));
     mesh.receiveShadow = true;
     G.scene.add(mesh);
   }
@@ -237,9 +244,9 @@ export class World {
 
     // --- pines (cone canopy) ---
     const pineTrunkGeo = new THREE.CylinderGeometry(0.28, 0.42, 3.2, 6);
-    const pineTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const pineTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: barkTex() });
     const pineLeafGeo = new THREE.ConeGeometry(1.9, 4.6, 7);
-    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: leafTex() });
     const allPines = [...pines.map(p => ({ ...p, dead: false })),
                       ...deadPines.map(p => ({ ...p, dead: true }))];
     this.pineTrunkIM = new THREE.InstancedMesh(pineTrunkGeo, pineTrunkMat, allPines.length);
@@ -267,9 +274,9 @@ export class World {
 
     // --- oaks (round canopy) ---
     const oakTrunkGeo = new THREE.CylinderGeometry(0.34, 0.5, 2.6, 6);
-    const oakTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const oakTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: barkTex() });
     const oakLeafGeo = new THREE.SphereGeometry(2.1, 7, 6);
-    const oakLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const oakLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: leafTex() });
     this.oakTrunkIM = new THREE.InstancedMesh(oakTrunkGeo, oakTrunkMat, oaks.length);
     this.oakLeafIM = new THREE.InstancedMesh(oakLeafGeo, oakLeafMat, oaks.length);
     this.oakTrunkIM.castShadow = this.oakLeafIM.castShadow = true;
@@ -293,9 +300,9 @@ export class World {
 
     // --- birches (pale slender trunks) ---
     const birchTrunkGeo = new THREE.CylinderGeometry(0.14, 0.2, 4.2, 6);
-    const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const birchTrunkMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: barkTex() });
     const birchLeafGeo = new THREE.SphereGeometry(1.3, 6, 5);
-    const birchLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const birchLeafMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: leafTex() });
     this.birchTrunkIM = new THREE.InstancedMesh(birchTrunkGeo, birchTrunkMat, birches.length);
     this.birchLeafIM = new THREE.InstancedMesh(birchLeafGeo, birchLeafMat, birches.length);
     this.birchTrunkIM.castShadow = this.birchLeafIM.castShadow = true;
@@ -319,7 +326,8 @@ export class World {
 
     // --- rocks: hills + scattered ---
     const rockGeo = new THREE.DodecahedronGeometry(1.15, 0);
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x77787f, flatShading: true });
+    const rockMat = new THREE.MeshLambertMaterial({ color: 0x77787f, flatShading: true,
+      map: stoneTex() });
     const rockSpots = [];
     for (let i = 0; i < 95; i++) {
       let x, z;
@@ -527,7 +535,7 @@ export class World {
     // --- stumps: a felled tree leaves proof (tree bible: stump persistence).
     // One instanced stump per harvestable tree; shown while the tree is down.
     const stumpGeo = new THREE.CylinderGeometry(0.2, 0.3, 0.45, 6);
-    const stumpMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+    const stumpMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: barkTex() });
     this.stumpIM = new THREE.InstancedMesh(stumpGeo, stumpMat, this.trees.length);
     this.trees.forEach((t, i) => {
       t.stumpIdx = i;

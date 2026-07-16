@@ -34,6 +34,10 @@ G.renderer.setSize(window.innerWidth, window.innerHeight);
 G.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 G.renderer.shadowMap.enabled = true;
 G.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// filmic tone mapping: highlights roll off like film instead of clipping —
+// firelight glows, skies breathe, and the cursed dark keeps its depth
+G.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+G.renderer.toneMappingExposure = 1.18;
 
 G.scene = new THREE.Scene();
 G.camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 600);

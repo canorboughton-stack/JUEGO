@@ -2,25 +2,31 @@
 // timber framing, wattle & daub plaster, thatched gable roofs, log construction —
 // plus the character rig (tunic/belt/boots, hoods, straw hats, helmets).
 import * as THREE from '../lib/three.module.js';
+import { woodTex, barkTex, thatchTex, stoneTex, plasterTex, clothTex, leatherTex,
+         faceTex, groundTex } from './textures.js';
 
 // ---------- shared material palette ----------
-const L = c => new THREE.MeshLambertMaterial({ color: c });
+// Every material carries a procedural grain map (multiplied by its color), so
+// the whole building library gains wood grain, thatch straw, stone cobbles and
+// plaster cracks in one place — the fidelity pass rides on this table.
+const L = (c, map = null) => new THREE.MeshLambertMaterial({ color: c, map });
 export const MAT = {
-  beam: L(0x4a3423),        // dark oak timber framing
-  beamLight: L(0x6b4e2e),   // lighter structural logs
-  log: L(0x7a5a38),         // debarked pine logs
-  plaster: L(0xd6c3a1),     // wattle & daub infill
-  plasterDS: new THREE.MeshLambertMaterial({ color: 0xd6c3a1, side: THREE.DoubleSide }),
-  thatch: L(0x8a6f42),      // straw thatch
-  thatchDark: L(0x6e5731),  // weathered ridge thatch
-  stone: L(0x8b8b90),       // fieldstone foundation
-  door: L(0x3c2c1a),
-  soil: L(0x4a3626),
-  soilDark: L(0x3a2a1c),
+  beam: L(0x4a3423, woodTex()),        // dark oak timber framing
+  beamLight: L(0x6b4e2e, woodTex()),   // lighter structural logs
+  log: L(0x7a5a38, barkTex()),         // debarked pine logs
+  plaster: L(0xd6c3a1, plasterTex()),  // wattle & daub infill
+  plasterDS: new THREE.MeshLambertMaterial({ color: 0xd6c3a1, map: plasterTex(),
+    side: THREE.DoubleSide }),
+  thatch: L(0x8a6f42, thatchTex()),    // straw thatch
+  thatchDark: L(0x6e5731, thatchTex()),// weathered ridge thatch
+  stone: L(0x8b8b90, stoneTex()),      // fieldstone foundation
+  door: L(0x3c2c1a, woodTex()),
+  soil: L(0x4a3626, groundTex()),
+  soilDark: L(0x3a2a1c, groundTex()),
   crop: L(0x7a9a3a),
-  straw: L(0xc2a45c),
+  straw: L(0xc2a45c, thatchTex()),
   iron: L(0x8a909c),
-  dark: L(0x2e2419),
+  dark: L(0x2e2419, leatherTex()),
 };
 
 // ---------- small helpers ----------
@@ -126,7 +132,16 @@ export function makeCharacter(opt = {}) {
     stance = null,            // 'hunched' for ghouls: wrong posture, dangling arms
   } = opt;
   const g = new THREE.Group();
-  const mTunic = L(tunic), mSkin = L(skin), mPants = L(pants), mBoots = L(boots);
+  // frontier cloth is woven and mended; boots and belts are creased leather
+  const mTunic = L(tunic, clothTex()), mSkin = L(skin);
+  const mPants = L(pants, clothTex()), mBoots = L(boots, leatherTex());
+  // identity is deterministic per body (silhouette scales persist in saves):
+  // same villager, same face, every load
+  const faceV = opt.face ?? Math.floor(((heightScale * 997.13) % 1) * 3);
+  const bearded = opt.beard ?? (((buildScale * 613.7) % 1) < 0.45);
+  const mFace = new THREE.MeshLambertMaterial({
+    map: faceTex(skin, faceV, bearded ? hair : null) });
+  const headMats = [mSkin, mSkin, mSkin, mSkin, mFace, mSkin];
 
   // torso: chest, flared tunic skirt, belt + buckle
   const chest = bx(g, 0.6, 0.56, 0.34, mTunic, 0, 1.3, 0);
@@ -173,18 +188,16 @@ export function makeCharacter(opt = {}) {
   const armL = makeArm(-1);
   const armPivot = makeArm(1);
 
-  // head group so hats/ears can attach
+  // head group so hats/ears can attach; the front carries the painted face
   const head = new THREE.Group();
   head.position.set(0, 1.6, 0);
-  bx(head, 0.32, 0.34, 0.3, mSkin, 0, 0.18, 0);
-  bx(head, 0.06, 0.05, 0.02, MAT.dark, -0.08, 0.22, 0.155); // eyes
-  bx(head, 0.06, 0.05, 0.02, MAT.dark, 0.08, 0.22, 0.155);
+  bx(head, 0.32, 0.34, 0.3, headMats, 0, 0.18, 0);
   if (hat === 'hood') {
-    const hMat = L(hatColor);
+    const hMat = L(hatColor, clothTex());
     cyl(head, 0.05, 0.28, 0.4, 6, hMat, 0, 0.42, -0.02);
     bx(head, 0.36, 0.2, 0.1, hMat, 0, 0.22, -0.17); // cape back
     bx(head, 0.38, 0.4, 0.34, hMat, 0, 0.2, -0.03).scale.set(1, 1, 0.95); // cowl
-    bx(head, 0.3, 0.3, 0.26, mSkin, 0, 0.17, 0.05); // face inside cowl
+    bx(head, 0.3, 0.3, 0.26, headMats, 0, 0.17, 0.05); // face inside cowl
   } else if (hat === 'straw') {
     cyl(head, 0.44, 0.44, 0.06, 8, MAT.straw, 0, 0.38, 0);
     cyl(head, 0.16, 0.22, 0.16, 8, MAT.straw, 0, 0.47, 0);
